@@ -7,6 +7,7 @@
 #import <Cocoa/Cocoa.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <ServiceManagement/ServiceManagement.h>
+#include <string.h>
 #include <unistd.h>
 
 #include "platform.h"
@@ -155,6 +156,21 @@ static bool num(CFDictionaryRef d, CFStringRef key, CFNumberType type, void *out
     return n && CFNumberGetValue(n, type, out);
 }
 
+// System processes that own invisible layer-0 windows (Stage Manager strip
+// hit areas, Dock, Control Center...). Snow must not land on those.
+static bool is_system_owner(CFDictionaryRef d) {
+    static const char *owners[] = {"WindowManager", "Dock", "Window Server", "Control Center",
+                                   "ControlCenter", "Notification Center", "NotificationCenter",
+                                   "SystemUIServer", "Spotlight", "screencaptureui", "TextInputMenuAgent"};
+    CFStringRef name = CFDictionaryGetValue(d, kCGWindowOwnerName);
+    if (!name) return false;
+    char buf[128];
+    if (!CFStringGetCString(name, buf, sizeof buf, kCFStringEncodingUTF8)) return false;
+    for (size_t i = 0; i < sizeof owners / sizeof owners[0]; i++)
+        if (strcmp(buf, owners[i]) == 0) return true;
+    return false;
+}
+
 int platform_windows(SnowWindow *out, int max) {
     CFArrayRef list = CGWindowListCopyWindowInfo(
         kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
@@ -168,6 +184,7 @@ int platform_windows(SnowWindow *out, int max) {
         uint32_t wid = 0;
         if (!num(d, kCGWindowLayer, kCFNumberIntType, &layer) || layer != 0) continue;
         if (num(d, kCGWindowOwnerPID, kCFNumberIntType, &pid) && pid == self_pid) continue;
+        if (is_system_owner(d)) continue;
         if (num(d, kCGWindowAlpha, kCFNumberDoubleType, &alpha) && alpha < 0.2) continue;
         if (!num(d, kCGWindowNumber, kCFNumberSInt32Type, &wid)) continue;
         CFDictionaryRef b = CFDictionaryGetValue(d, kCGWindowBounds);
