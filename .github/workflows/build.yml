@@ -12,9 +12,9 @@ permissions:
 
 jobs:
   macos:
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Version
         id: v
@@ -46,7 +46,7 @@ jobs:
   demo-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Dependencies
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
       - name: Build demo
