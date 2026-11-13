@@ -93,8 +93,8 @@ fail() { # label
 
 bar() { # percent, label, detail
     local pct=$1 n=$(( $1 * 24 / 100 )) full="" empty="" i
-    for ((i = 0; i < n; i++)); do full="$full█"; done
-    for ((i = n; i < 24; i++)); do empty="$empty░"; done
+    for ((i = 0; i < n; i++)); do full="${full}█"; done
+    for ((i = n; i < 24; i++)); do empty="${empty}░"; done
     if [ $FANCY -eq 1 ]; then
         printf '\r\033[K  %s❄%s %-24s %s%s%s%s%s %3d%%  %s%s%s' \
             "$C3" "$R" "$2" "$C4" "$full" "$R" "$GREY" "$empty" "$pct" "$GREY" "$3" "$R"
