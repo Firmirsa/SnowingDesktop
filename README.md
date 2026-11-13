@@ -52,6 +52,8 @@ cd SnowingDesktop
 make run
 ```
 
+<img src="docs/build.gif" alt="make output" width="600">
+
 Other targets:
 
 | Command | What it does |
@@ -60,6 +62,7 @@ Other targets:
 | `make run` | builds and launches it |
 | `make zip` | zipped app, ready for a GitHub release |
 | `make demo` | scripted fake desktop (also works on Linux), used to record the GIF |
+| `make V=1` | raw compiler output instead of the pretty build |
 | `./build/snow-demo --record demo.mp4` | renders the demo video (needs `ffmpeg`) |
 
 ## 🧠 How it works

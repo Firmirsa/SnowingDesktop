@@ -4,6 +4,7 @@
 #   make run        build and launch
 #   make demo       Linux/macOS: build the scripted fake-desktop demo
 #   make zip        macOS: zipped .app for a GitHub release
+#   V=1             show the raw compiler commands instead of the pretty build
 #
 # raylib is fetched and built automatically into vendor/ (no Homebrew needed).
 
@@ -35,42 +36,56 @@ else
   default: demo
 endif
 
-.PHONY: default app run demo zip clean distclean
+.PHONY: default app run demo zip clean distclean raw-raylib-src raw-raylib raw-app raw-run raw-zip raw-demo
 
-$(RAYLIB_DIR):
-	git clone --depth 1 --branch $(RAYLIB_VERSION) https://github.com/raysan5/raylib.git $(RAYLIB_DIR)
+# Public targets show a pretty build (scripts/build.sh). V=1 shows raw commands.
+ifeq ($(V),1)
+app: raw-app
+run: raw-run
+zip: raw-zip
+demo: raw-demo
+else
+app run zip demo:
+	@bash scripts/build.sh $@
+endif
 
-$(RAYLIB_LIB): | $(RAYLIB_DIR)
-	$(MAKE) -C $(RAYLIB_DIR)/src PLATFORM=PLATFORM_DESKTOP $(RAYLIB_FLAGS)
+# ---- raw targets (called by scripts/build.sh) -------------------------------
+$(RAYLIB_DIR)/src/raylib.h:
+	git clone --progress --depth 1 --branch $(RAYLIB_VERSION) https://github.com/raysan5/raylib.git $(RAYLIB_DIR)
+
+$(RAYLIB_LIB): $(RAYLIB_DIR)/src/raylib.h
+	$(MAKE) -C $(RAYLIB_DIR)/src PLATFORM=PLATFORM_DESKTOP $(RAYLIB_FLAGS) -j4
+
+raw-raylib-src: $(RAYLIB_DIR)/src/raylib.h
+raw-raylib: $(RAYLIB_LIB)
 
 build:
 	mkdir -p build
 
-# ---- macOS app -------------------------------------------------------------
+# macOS app
 build/SnowOnDesktop: $(CORE) src/platform_mac.m src/*.h $(RAYLIB_LIB) | build
 	$(CC) $(CFLAGS) -fno-objc-arc $(CORE) src/platform_mac.m $(RAYLIB_LIB) $(FRAMEWORKS) -o $@
 
-app: build/SnowOnDesktop
+raw-app: build/SnowOnDesktop
 	rm -rf "$(BUNDLE)"
 	mkdir -p "$(BUNDLE)/Contents/MacOS" "$(BUNDLE)/Contents/Resources"
 	cp build/SnowOnDesktop "$(BUNDLE)/Contents/MacOS/SnowOnDesktop"
 	sed 's/@VERSION@/$(VERSION)/g' macos/Info.plist > "$(BUNDLE)/Contents/Info.plist"
 	if [ -f macos/AppIcon.icns ]; then cp macos/AppIcon.icns "$(BUNDLE)/Contents/Resources/"; fi
 	codesign --force --deep --sign - "$(BUNDLE)"
-	@echo "Built: $(BUNDLE)"
 
-run: app
+raw-run: raw-app
 	open "$(BUNDLE)"
 
-zip: app
+raw-zip: raw-app
+	rm -f "build/SnowOnDesktop-$(VERSION)-macOS.zip"
 	cd build && ditto -c -k --keepParent "$(APP_NAME).app" "SnowOnDesktop-$(VERSION)-macOS.zip"
-	@echo "Built: build/SnowOnDesktop-$(VERSION)-macOS.zip"
 
-# ---- scripted demo (fake desktop) -----------------------------------------
+# scripted demo (fake desktop)
 build/snow-demo: $(CORE) src/platform_demo.c src/*.h $(RAYLIB_LIB) | build
 	$(CC) $(CFLAGS) $(CORE) src/platform_demo.c $(RAYLIB_LIB) $(DEMO_LIBS) -lm -o $@
 
-demo: build/snow-demo
+raw-demo: build/snow-demo
 
 clean:
 	rm -rf build
