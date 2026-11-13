@@ -25,7 +25,7 @@ ifeq ($(UNAME),Darwin)
   MACOS_MIN    := -mmacosx-version-min=11.0
   CFLAGS       += $(ARCHS) $(MACOS_MIN)
   FRAMEWORKS   := -framework Cocoa -framework IOKit -framework CoreVideo -framework OpenGL \
-                  -framework CoreGraphics -framework ServiceManagement
+                  -framework CoreGraphics -framework ServiceManagement -framework Carbon
   RAYLIB_FLAGS := CUSTOM_CFLAGS="$(ARCHS) $(MACOS_MIN) -DGL_SILENCE_DEPRECATION"
   DEMO_LIBS    := $(FRAMEWORKS)
   default: app

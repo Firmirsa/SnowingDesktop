@@ -4,6 +4,7 @@
 //
 // No special permission is needed: window *bounds* are readable without the
 // Screen Recording permission (only window titles would require it).
+#import <Carbon/Carbon.h>
 #import <Cocoa/Cocoa.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <ServiceManagement/ServiceManagement.h>
@@ -22,10 +23,19 @@ static float refresh_timer;
 
 // ---- menu bar item ---------------------------------------------------------
 enum { TAG_LIGHT = 1, TAG_NORMAL, TAG_BLIZZARD, TAG_PAUSE, TAG_HIDE, TAG_LOGIN };
+enum { HK_PAUSE = 1, HK_MELT, HK_BLIZZARD, HK_HIDE };
+
+static bool french;
+#define L(en, fr) (french ? (fr) : (en))
 
 static bool login_enabled(void) {
     if (@available(macOS 13.0, *)) return [SMAppService mainAppService].status == SMAppServiceStatusEnabled;
     return false;
+}
+
+static void toggle_blizzard(void) {
+    settings->intensity = settings->intensity >= 2.0f ? 1.0f : 2.8f;
+    settings->paused = false;
 }
 
 @interface SnowMenu : NSObject <NSMenuDelegate>
@@ -67,15 +77,21 @@ static bool login_enabled(void) {
 
 static SnowMenu *menu_target;
 
+// key: shortcut shown in the menu, always with Control + Option (global hotkey)
 static void add_item(NSMenu *m, NSString *title, SEL action, NSInteger tag, NSString *key) {
     NSMenuItem *it = [[NSMenuItem alloc] initWithTitle:title action:action keyEquivalent:key ? key : @""];
     it.target = menu_target;
     it.tag = tag;
+    if (key && ![key isEqualToString:@"q"])
+        it.keyEquivalentModifierMask = NSEventModifierFlagControl | NSEventModifierFlagOption;
     [m addItem:it];
     [it release];
 }
 
 static void build_menu(void) {
+    NSString *lang = [NSLocale preferredLanguages].firstObject;
+    french = lang && [lang hasPrefix:@"fr"];
+
     menu_target = [[SnowMenu alloc] init];
     status_item = [[[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength] retain];
     status_item.button.title = @"❄︎";
@@ -84,18 +100,48 @@ static void build_menu(void) {
     NSMenu *m = [[NSMenu alloc] initWithTitle:@"Snow"];
     m.delegate = menu_target;
     m.autoenablesItems = NO;
-    add_item(m, @"Light snow", @selector(light:), TAG_LIGHT, nil);
-    add_item(m, @"Snow", @selector(normal:), TAG_NORMAL, nil);
-    add_item(m, @"Blizzard", @selector(blizzard:), TAG_BLIZZARD, nil);
+    add_item(m, L(@"Light snow", @"Neige légère"), @selector(light:), TAG_LIGHT, nil);
+    add_item(m, L(@"Snow", @"Neige"), @selector(normal:), TAG_NORMAL, nil);
+    add_item(m, L(@"Blizzard", @"Tempête de neige"), @selector(blizzard:), TAG_BLIZZARD, @"b");
     [m addItem:[NSMenuItem separatorItem]];
-    add_item(m, @"Stop snowfall", @selector(pause:), TAG_PAUSE, nil);
-    add_item(m, @"Melt all snow", @selector(melt:), 0, nil);
-    add_item(m, @"Hide", @selector(hide:), TAG_HIDE, nil);
+    add_item(m, L(@"Stop snowfall", @"Arrêter la neige"), @selector(pause:), TAG_PAUSE, @"s");
+    add_item(m, L(@"Melt all snow", @"Faire fondre la neige"), @selector(melt:), 0, @"m");
+    add_item(m, L(@"Hide", @"Masquer"), @selector(hide:), TAG_HIDE, @"h");
     [m addItem:[NSMenuItem separatorItem]];
-    if (@available(macOS 13.0, *)) add_item(m, @"Launch at login", @selector(login:), TAG_LOGIN, nil);
-    add_item(m, @"Quit Snow on Desktop", @selector(quit:), 0, @"q");
+    if (@available(macOS 13.0, *))
+        add_item(m, L(@"Launch at login", @"Lancer au démarrage"), @selector(login:), TAG_LOGIN, nil);
+    add_item(m, L(@"Quit Snow on Desktop", @"Quitter Snow on Desktop"), @selector(quit:), 0, @"q");
     status_item.menu = m;
     [m release];
+}
+
+// ---- global hotkeys (Control + Option + key) -------------------------------
+// Carbon hotkeys work without the Accessibility permission.
+static OSStatus hotkey_handler(EventHandlerCallRef next, EventRef ev, void *user) {
+    (void)next; (void)user;
+    EventHotKeyID hk;
+    if (GetEventParameter(ev, kEventParamDirectObject, typeEventHotKeyID, NULL, sizeof hk, NULL, &hk) != noErr)
+        return eventNotHandledErr;
+    switch (hk.id) {
+        case HK_PAUSE:    settings->paused = !settings->paused; break;
+        case HK_MELT:     settings->melt_req = true; break;
+        case HK_BLIZZARD: toggle_blizzard(); break;
+        case HK_HIDE:     settings->hidden = !settings->hidden; break;
+    }
+    return noErr;
+}
+
+static void register_hotkeys(void) {
+    EventTypeSpec spec = {kEventClassKeyboard, kEventHotKeyPressed};
+    InstallApplicationEventHandler(&hotkey_handler, 1, &spec, NULL, NULL);
+    struct { UInt32 key, id; } keys[] = {
+        {kVK_ANSI_S, HK_PAUSE}, {kVK_ANSI_M, HK_MELT}, {kVK_ANSI_B, HK_BLIZZARD}, {kVK_ANSI_H, HK_HIDE},
+    };
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++) {
+        EventHotKeyRef ref;
+        EventHotKeyID hid = {'snow', keys[i].id};
+        RegisterEventHotKey(keys[i].key, controlKey | optionKey, hid, GetApplicationEventTarget(), 0, &ref);
+    }
 }
 
 // ---- overlay window --------------------------------------------------------
@@ -139,6 +185,7 @@ ScreenInfo platform_init(void *native_window, AppSettings *s, int argc, char **a
     fit_overlay(&info);
     [overlay orderFrontRegardless];
     build_menu();
+    register_hotkeys();
     SetExitKey(KEY_NULL);
     return info;
 }
@@ -190,7 +237,10 @@ int platform_windows(SnowWindow *out, int max) {
         CFDictionaryRef b = CFDictionaryGetValue(d, kCGWindowBounds);
         CGRect r;
         if (!b || !CGRectMakeWithDictionaryRepresentation(b, &r)) continue;
-        if (!CGRectIntersectsRect(r, display)) continue;
+        // mostly off-screen windows (e.g. Stage Manager parks inactive windows
+        // off the left edge): only the sliver that sticks out would catch snow
+        CGRect vis = CGRectIntersection(r, display);
+        if (CGRectIsNull(vis) || vis.size.width * vis.size.height < 0.3 * r.size.width * r.size.height) continue;
         out[n++] = (SnowWindow){wid, (float)(r.origin.x - display.origin.x), (float)(r.origin.y - display.origin.y),
                                 (float)r.size.width, (float)r.size.height};
     }
