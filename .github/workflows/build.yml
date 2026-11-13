@@ -20,7 +20,9 @@ jobs:
         id: v
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+            v="${GITHUB_REF#refs/tags/v}"
+            v="${v%_on_publish}"   # GitHub's release form sometimes names the tag vX.Y.Z_on_publish
+            echo "version=$v" >> "$GITHUB_OUTPUT"
           else
             echo "version=0.0.0-dev" >> "$GITHUB_OUTPUT"
           fi
