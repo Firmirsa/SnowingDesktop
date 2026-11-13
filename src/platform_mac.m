@@ -4,13 +4,13 @@
 //
 // No special permission is needed: window *bounds* are readable without the
 // Screen Recording permission (only window titles would require it).
-#import <Carbon/Carbon.h>
 #import <Cocoa/Cocoa.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <ServiceManagement/ServiceManagement.h>
 #include <string.h>
 #include <unistd.h>
 
+#include "hotkeys_mac.h"
 #include "platform.h"
 #include "raylib.h"
 
@@ -23,7 +23,6 @@ static float refresh_timer;
 
 // ---- menu bar item ---------------------------------------------------------
 enum { TAG_LIGHT = 1, TAG_NORMAL, TAG_BLIZZARD, TAG_PAUSE, TAG_HIDE, TAG_LOGIN };
-enum { HK_PAUSE = 1, HK_MELT, HK_BLIZZARD, HK_HIDE };
 
 static bool french;
 #define L(en, fr) (french ? (fr) : (en))
@@ -115,32 +114,13 @@ static void build_menu(void) {
     [m release];
 }
 
-// ---- global hotkeys (Control + Option + key) -------------------------------
-// Carbon hotkeys work without the Accessibility permission.
-static OSStatus hotkey_handler(EventHandlerCallRef next, EventRef ev, void *user) {
-    (void)next; (void)user;
-    EventHotKeyID hk;
-    if (GetEventParameter(ev, kEventParamDirectObject, typeEventHotKeyID, NULL, sizeof hk, NULL, &hk) != noErr)
-        return eventNotHandledErr;
-    switch (hk.id) {
+// ---- global hotkeys (Control + Option + key), see hotkeys_mac.m -----------
+static void on_hotkey(int id) {
+    switch (id) {
         case HK_PAUSE:    settings->paused = !settings->paused; break;
         case HK_MELT:     settings->melt_req = true; break;
         case HK_BLIZZARD: toggle_blizzard(); break;
         case HK_HIDE:     settings->hidden = !settings->hidden; break;
-    }
-    return noErr;
-}
-
-static void register_hotkeys(void) {
-    EventTypeSpec spec = {kEventClassKeyboard, kEventHotKeyPressed};
-    InstallApplicationEventHandler(&hotkey_handler, 1, &spec, NULL, NULL);
-    struct { UInt32 key, id; } keys[] = {
-        {kVK_ANSI_S, HK_PAUSE}, {kVK_ANSI_M, HK_MELT}, {kVK_ANSI_B, HK_BLIZZARD}, {kVK_ANSI_H, HK_HIDE},
-    };
-    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++) {
-        EventHotKeyRef ref;
-        EventHotKeyID hid = {'snow', keys[i].id};
-        RegisterEventHotKey(keys[i].key, controlKey | optionKey, hid, GetApplicationEventTarget(), 0, &ref);
     }
 }
 
@@ -185,7 +165,7 @@ ScreenInfo platform_init(void *native_window, AppSettings *s, int argc, char **a
     fit_overlay(&info);
     [overlay orderFrontRegardless];
     build_menu();
-    register_hotkeys();
+    hotkeys_register(on_hotkey);
     SetExitKey(KEY_NULL);
     return info;
 }

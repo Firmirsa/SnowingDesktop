@@ -47,8 +47,8 @@ build:
 	mkdir -p build
 
 # ---- macOS app -------------------------------------------------------------
-build/SnowOnDesktop: $(CORE) src/platform_mac.m src/*.h $(RAYLIB_LIB) | build
-	$(CC) $(CFLAGS) -fno-objc-arc $(CORE) src/platform_mac.m $(RAYLIB_LIB) $(FRAMEWORKS) -o $@
+build/SnowOnDesktop: $(CORE) src/platform_mac.m src/hotkeys_mac.m src/*.h $(RAYLIB_LIB) | build
+	$(CC) $(CFLAGS) -fno-objc-arc $(CORE) src/platform_mac.m src/hotkeys_mac.m $(RAYLIB_LIB) $(FRAMEWORKS) -o $@
 
 app: build/SnowOnDesktop
 	rm -rf "$(BUNDLE)"
