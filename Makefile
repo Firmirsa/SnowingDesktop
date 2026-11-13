@@ -25,7 +25,7 @@ ifeq ($(UNAME),Darwin)
   MACOS_MIN    := -mmacosx-version-min=11.0
   CFLAGS       += $(ARCHS) $(MACOS_MIN)
   FRAMEWORKS   := -framework Cocoa -framework IOKit -framework CoreVideo -framework OpenGL \
-                  -framework CoreGraphics -framework ServiceManagement -framework Carbon
+                  -framework CoreGraphics -framework ServiceManagement
   RAYLIB_FLAGS := CUSTOM_CFLAGS="$(ARCHS) $(MACOS_MIN) -DGL_SILENCE_DEPRECATION"
   DEMO_LIBS    := $(FRAMEWORKS)
   default: app
@@ -47,8 +47,8 @@ build:
 	mkdir -p build
 
 # ---- macOS app -------------------------------------------------------------
-build/SnowOnDesktop: $(CORE) src/platform_mac.m src/hotkeys_mac.m src/*.h $(RAYLIB_LIB) | build
-	$(CC) $(CFLAGS) -fno-objc-arc $(CORE) src/platform_mac.m src/hotkeys_mac.m $(RAYLIB_LIB) $(FRAMEWORKS) -o $@
+build/SnowOnDesktop: $(CORE) src/platform_mac.m src/*.h $(RAYLIB_LIB) | build
+	$(CC) $(CFLAGS) -fno-objc-arc $(CORE) src/platform_mac.m $(RAYLIB_LIB) $(FRAMEWORKS) -o $@
 
 app: build/SnowOnDesktop
 	rm -rf "$(BUNDLE)"

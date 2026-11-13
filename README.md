@@ -25,7 +25,6 @@ Close it and the snow falls onto whatever is underneath. Brush the snow away wit
 - **Window stacking aware**: snow behind another window stays hidden, and comes back when you uncover it
 - **Spaces aware**: switching desktops doesn't dump all your snow; it waits for you
 - **Menu bar control** ❄︎: light snow, snow, blizzard, stop, melt everything, hide, launch at login (English / French)
-- **Global shortcuts**: `⌃⌥S` stop/restart snowfall · `⌃⌥M` melt everything · `⌃⌥B` blizzard · `⌃⌥H` hide
 - **Click-through**: it never gets in the way of your mouse or keyboard
 - **No permissions**: it only reads window positions, never window contents or titles
 

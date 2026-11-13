@@ -10,7 +10,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "hotkeys_mac.h"
 #include "platform.h"
 #include "raylib.h"
 
@@ -30,11 +29,6 @@ static bool french;
 static bool login_enabled(void) {
     if (@available(macOS 13.0, *)) return [SMAppService mainAppService].status == SMAppServiceStatusEnabled;
     return false;
-}
-
-static void toggle_blizzard(void) {
-    settings->intensity = settings->intensity >= 2.0f ? 1.0f : 2.8f;
-    settings->paused = false;
 }
 
 @interface SnowMenu : NSObject <NSMenuDelegate>
@@ -76,13 +70,10 @@ static void toggle_blizzard(void) {
 
 static SnowMenu *menu_target;
 
-// key: shortcut shown in the menu, always with Control + Option (global hotkey)
 static void add_item(NSMenu *m, NSString *title, SEL action, NSInteger tag, NSString *key) {
     NSMenuItem *it = [[NSMenuItem alloc] initWithTitle:title action:action keyEquivalent:key ? key : @""];
     it.target = menu_target;
     it.tag = tag;
-    if (key && ![key isEqualToString:@"q"])
-        it.keyEquivalentModifierMask = NSEventModifierFlagControl | NSEventModifierFlagOption;
     [m addItem:it];
     [it release];
 }
@@ -93,7 +84,22 @@ static void build_menu(void) {
 
     menu_target = [[SnowMenu alloc] init];
     status_item = [[[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength] retain];
-    status_item.button.title = @"❄︎";
+    // big snowflake: SF Symbol when available, larger text glyph otherwise
+    NSImage *icon = nil;
+    if (@available(macOS 11.0, *)) {
+        icon = [NSImage imageWithSystemSymbolName:@"snowflake" accessibilityDescription:@"Snow on Desktop"];
+        NSImageSymbolConfiguration *cfg = [NSImageSymbolConfiguration configurationWithPointSize:18
+                                                                                          weight:NSFontWeightSemibold];
+        icon = [icon imageWithSymbolConfiguration:cfg];
+    }
+    if (icon) {
+        icon.template = YES; // follows light / dark menu bar
+        status_item.button.image = icon;
+    } else {
+        status_item.button.attributedTitle = [[[NSAttributedString alloc]
+            initWithString:@"\u2744\uFE0E"
+                attributes:@{NSFontAttributeName : [NSFont systemFontOfSize:19]}] autorelease];
+    }
     status_item.button.toolTip = @"Snow on Desktop";
 
     NSMenu *m = [[NSMenu alloc] initWithTitle:@"Snow"];
@@ -101,27 +107,17 @@ static void build_menu(void) {
     m.autoenablesItems = NO;
     add_item(m, L(@"Light snow", @"Neige légère"), @selector(light:), TAG_LIGHT, nil);
     add_item(m, L(@"Snow", @"Neige"), @selector(normal:), TAG_NORMAL, nil);
-    add_item(m, L(@"Blizzard", @"Tempête de neige"), @selector(blizzard:), TAG_BLIZZARD, @"b");
+    add_item(m, L(@"Blizzard", @"Tempête de neige"), @selector(blizzard:), TAG_BLIZZARD, nil);
     [m addItem:[NSMenuItem separatorItem]];
-    add_item(m, L(@"Stop snowfall", @"Arrêter la neige"), @selector(pause:), TAG_PAUSE, @"s");
-    add_item(m, L(@"Melt all snow", @"Faire fondre la neige"), @selector(melt:), 0, @"m");
-    add_item(m, L(@"Hide", @"Masquer"), @selector(hide:), TAG_HIDE, @"h");
+    add_item(m, L(@"Stop snowfall", @"Arrêter la neige"), @selector(pause:), TAG_PAUSE, nil);
+    add_item(m, L(@"Melt all snow", @"Faire fondre la neige"), @selector(melt:), 0, nil);
+    add_item(m, L(@"Hide", @"Masquer"), @selector(hide:), TAG_HIDE, nil);
     [m addItem:[NSMenuItem separatorItem]];
     if (@available(macOS 13.0, *))
         add_item(m, L(@"Launch at login", @"Lancer au démarrage"), @selector(login:), TAG_LOGIN, nil);
     add_item(m, L(@"Quit Snow on Desktop", @"Quitter Snow on Desktop"), @selector(quit:), 0, @"q");
     status_item.menu = m;
     [m release];
-}
-
-// ---- global hotkeys (Control + Option + key), see hotkeys_mac.m -----------
-static void on_hotkey(int id) {
-    switch (id) {
-        case HK_PAUSE:    settings->paused = !settings->paused; break;
-        case HK_MELT:     settings->melt_req = true; break;
-        case HK_BLIZZARD: toggle_blizzard(); break;
-        case HK_HIDE:     settings->hidden = !settings->hidden; break;
-    }
 }
 
 // ---- overlay window --------------------------------------------------------
@@ -165,7 +161,6 @@ ScreenInfo platform_init(void *native_window, AppSettings *s, int argc, char **a
     fit_overlay(&info);
     [overlay orderFrontRegardless];
     build_menu();
-    hotkeys_register(on_hotkey);
     SetExitKey(KEY_NULL);
     return info;
 }
