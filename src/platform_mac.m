@@ -1,0 +1,200 @@
+// platform_mac.m - macOS overlay: a transparent, click-through window above
+// everything, the list of on-screen windows from CoreGraphics, and a menu bar
+// item to control the snow.
+//
+// No special permission is needed: window *bounds* are readable without the
+// Screen Recording permission (only window titles would require it).
+#import <Cocoa/Cocoa.h>
+#import <CoreGraphics/CoreGraphics.h>
+#import <ServiceManagement/ServiceManagement.h>
+#include <unistd.h>
+
+#include "platform.h"
+#include "raylib.h"
+
+static NSWindow *overlay;
+static AppSettings *settings;
+static NSStatusItem *status_item;
+static pid_t self_pid;
+static CGRect display;       // main display, global CoreGraphics coordinates
+static float refresh_timer;
+
+// ---- menu bar item ---------------------------------------------------------
+enum { TAG_LIGHT = 1, TAG_NORMAL, TAG_BLIZZARD, TAG_PAUSE, TAG_HIDE, TAG_LOGIN };
+
+static bool login_enabled(void) {
+    if (@available(macOS 13.0, *)) return [SMAppService mainAppService].status == SMAppServiceStatusEnabled;
+    return false;
+}
+
+@interface SnowMenu : NSObject <NSMenuDelegate>
+@end
+
+@implementation SnowMenu
+- (void)light:(id)sender    { settings->intensity = 0.45f; settings->paused = false; }
+- (void)normal:(id)sender   { settings->intensity = 1.0f;  settings->paused = false; }
+- (void)blizzard:(id)sender { settings->intensity = 2.8f;  settings->paused = false; }
+- (void)pause:(id)sender    { settings->paused = !settings->paused; }
+- (void)hide:(id)sender     { settings->hidden = !settings->hidden; }
+- (void)melt:(id)sender     { settings->melt_req = true; }
+- (void)quit:(id)sender     { settings->quit_req = true; }
+- (void)login:(id)sender {
+    if (@available(macOS 13.0, *)) {
+        NSError *err = nil;
+        SMAppService *svc = [SMAppService mainAppService];
+        if (svc.status == SMAppServiceStatusEnabled) [svc unregisterAndReturnError:&err];
+        else [svc registerAndReturnError:&err];
+        if (err) NSLog(@"Snow on Desktop: launch at login: %@", err);
+    }
+}
+- (void)menuNeedsUpdate:(NSMenu *)menu {
+    for (NSMenuItem *it in menu.itemArray) {
+        bool on = false;
+        switch (it.tag) {
+            case TAG_LIGHT:    on = !settings->paused && settings->intensity < 0.7f; break;
+            case TAG_NORMAL:   on = !settings->paused && settings->intensity >= 0.7f && settings->intensity < 2.0f; break;
+            case TAG_BLIZZARD: on = !settings->paused && settings->intensity >= 2.0f; break;
+            case TAG_PAUSE:    on = settings->paused; break;
+            case TAG_HIDE:     on = settings->hidden; break;
+            case TAG_LOGIN:    on = login_enabled(); break;
+            default: continue;
+        }
+        it.state = on ? NSControlStateValueOn : NSControlStateValueOff;
+    }
+}
+@end
+
+static SnowMenu *menu_target;
+
+static void add_item(NSMenu *m, NSString *title, SEL action, NSInteger tag, NSString *key) {
+    NSMenuItem *it = [[NSMenuItem alloc] initWithTitle:title action:action keyEquivalent:key ? key : @""];
+    it.target = menu_target;
+    it.tag = tag;
+    [m addItem:it];
+    [it release];
+}
+
+static void build_menu(void) {
+    menu_target = [[SnowMenu alloc] init];
+    status_item = [[[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength] retain];
+    status_item.button.title = @"❄︎";
+    status_item.button.toolTip = @"Snow on Desktop";
+
+    NSMenu *m = [[NSMenu alloc] initWithTitle:@"Snow"];
+    m.delegate = menu_target;
+    m.autoenablesItems = NO;
+    add_item(m, @"Light snow", @selector(light:), TAG_LIGHT, nil);
+    add_item(m, @"Snow", @selector(normal:), TAG_NORMAL, nil);
+    add_item(m, @"Blizzard", @selector(blizzard:), TAG_BLIZZARD, nil);
+    [m addItem:[NSMenuItem separatorItem]];
+    add_item(m, @"Stop snowfall", @selector(pause:), TAG_PAUSE, nil);
+    add_item(m, @"Melt all snow", @selector(melt:), 0, nil);
+    add_item(m, @"Hide", @selector(hide:), TAG_HIDE, nil);
+    [m addItem:[NSMenuItem separatorItem]];
+    if (@available(macOS 13.0, *)) add_item(m, @"Launch at login", @selector(login:), TAG_LOGIN, nil);
+    add_item(m, @"Quit Snow on Desktop", @selector(quit:), 0, @"q");
+    status_item.menu = m;
+    [m release];
+}
+
+// ---- overlay window --------------------------------------------------------
+static void fit_overlay(ScreenInfo *out) {
+    NSScreen *scr = [NSScreen screens].firstObject; // the one with the menu bar
+    NSRect f = scr.frame;
+    if (!NSEqualRects(overlay.frame, f)) [overlay setFrame:f display:YES];
+    display = CGDisplayBounds(CGMainDisplayID());
+    out->width = (float)f.size.width;
+    out->height = (float)f.size.height;
+    out->ground_y = (float)f.size.height; // snow drifts at the very bottom, over the Dock
+}
+
+unsigned int platform_window_flags(void) {
+    return FLAG_WINDOW_UNDECORATED | FLAG_WINDOW_TRANSPARENT | FLAG_WINDOW_TOPMOST |
+           FLAG_WINDOW_MOUSE_PASSTHROUGH | FLAG_WINDOW_UNFOCUSED | FLAG_WINDOW_ALWAYS_RUN |
+           FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT;
+}
+
+float platform_fixed_dt(void) { return 0.0f; }
+
+ScreenInfo platform_init(void *native_window, AppSettings *s, int argc, char **argv) {
+    (void)argc; (void)argv;
+    settings = s;
+    self_pid = getpid();
+    overlay = (NSWindow *)native_window;
+
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory]; // no Dock icon
+    overlay.opaque = NO;
+    overlay.backgroundColor = [NSColor clearColor];
+    overlay.hasShadow = NO;
+    overlay.ignoresMouseEvents = YES;
+    overlay.level = NSStatusWindowLevel;
+    overlay.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
+                                 NSWindowCollectionBehaviorStationary |
+                                 NSWindowCollectionBehaviorIgnoresCycle |
+                                 NSWindowCollectionBehaviorFullScreenAuxiliary;
+    if ([overlay respondsToSelector:@selector(setSharingType:)]) overlay.sharingType = NSWindowSharingReadOnly;
+
+    ScreenInfo info;
+    fit_overlay(&info);
+    [overlay orderFrontRegardless];
+    build_menu();
+    SetExitKey(KEY_NULL);
+    return info;
+}
+
+void platform_frame(float dt, ScreenInfo *screen) {
+    refresh_timer -= dt;
+    if (refresh_timer <= 0.0f) { // resolution / arrangement changes
+        refresh_timer = 2.0f;
+        fit_overlay(screen);
+    }
+}
+
+static bool num(CFDictionaryRef d, CFStringRef key, CFNumberType type, void *out) {
+    CFNumberRef n = CFDictionaryGetValue(d, key);
+    return n && CFNumberGetValue(n, type, out);
+}
+
+int platform_windows(SnowWindow *out, int max) {
+    CFArrayRef list = CGWindowListCopyWindowInfo(
+        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+    if (!list) return 0;
+    int n = 0;
+    CFIndex count = CFArrayGetCount(list);
+    for (CFIndex i = 0; i < count && n < max; i++) { // already front-to-back
+        CFDictionaryRef d = CFArrayGetValueAtIndex(list, i);
+        int layer = -1, pid = 0;
+        double alpha = 1.0;
+        uint32_t wid = 0;
+        if (!num(d, kCGWindowLayer, kCFNumberIntType, &layer) || layer != 0) continue;
+        if (num(d, kCGWindowOwnerPID, kCFNumberIntType, &pid) && pid == self_pid) continue;
+        if (num(d, kCGWindowAlpha, kCFNumberDoubleType, &alpha) && alpha < 0.2) continue;
+        if (!num(d, kCGWindowNumber, kCFNumberSInt32Type, &wid)) continue;
+        CFDictionaryRef b = CFDictionaryGetValue(d, kCGWindowBounds);
+        CGRect r;
+        if (!b || !CGRectMakeWithDictionaryRepresentation(b, &r)) continue;
+        if (!CGRectIntersectsRect(r, display)) continue;
+        out[n++] = (SnowWindow){wid, (float)(r.origin.x - display.origin.x), (float)(r.origin.y - display.origin.y),
+                                (float)r.size.width, (float)r.size.height};
+    }
+    CFRelease(list);
+    return n;
+}
+
+bool platform_cursor(float *x, float *y) {
+    CGEventRef e = CGEventCreate(NULL);
+    if (!e) return false;
+    CGPoint p = CGEventGetLocation(e);
+    CFRelease(e);
+    *x = (float)(p.x - display.origin.x);
+    *y = (float)(p.y - display.origin.y);
+    return true;
+}
+
+void platform_draw_background(void) {}
+void platform_draw_foreground(void) {}
+void platform_after_frame(void) {}
+
+void platform_shutdown(void) {
+    if (status_item) [[NSStatusBar systemStatusBar] removeStatusItem:status_item];
+}
