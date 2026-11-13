@@ -11,6 +11,8 @@ Close it and the snow falls onto whatever is underneath. Brush the snow away wit
 
 *Written in C with [raylib](https://www.raylib.com). Tiny, native, no permissions needed.*
 
+**[⬇️ Download](../../releases/latest)** · **[📖 User guide](docs/GUIDE.md)** · **[🇫🇷 Guide en français](docs/GUIDE.fr.md)**
+
 </div>
 
 ---
@@ -38,7 +40,9 @@ Close it and the snow falls onto whatever is underneath. Brush the snow away wit
    ```bash
    xattr -dr com.apple.quarantine "/Applications/Snow on Desktop.app"
    ```
-4. A ❄︎ appears in your menu bar. Enjoy.
+4. A ❄︎ appears in your menu bar. Click it to change the snowfall, melt everything or quit.
+
+👉 Everything else (menu, tips, launch at login, uninstall, troubleshooting) is in the **[user guide](docs/GUIDE.md)** ([français](docs/GUIDE.fr.md)).
 
 Works on macOS 11 Big Sur and later, Apple Silicon and Intel (universal binary).
 
