@@ -13,7 +13,7 @@ RAYLIB_DIR     := vendor/raylib
 RAYLIB_LIB     := $(RAYLIB_DIR)/src/libraylib.a
 APP_NAME       := Snow on Desktop
 BUNDLE         := build/$(APP_NAME).app
-VERSION        ?= 0.1.0
+VERSION        ?= 0.1.1
 
 CC      ?= cc
 CFLAGS  += -O2 -std=c11 -Wall -Wextra -Wno-missing-field-initializers -I$(RAYLIB_DIR)/src

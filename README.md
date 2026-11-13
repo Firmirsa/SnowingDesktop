@@ -1,6 +1,8 @@
 <div align="center">
 
-# ❄️ Snow on Desktop
+<img src="docs/icon.png" alt="" width="128">
+
+# Snow on Desktop
 
 **It snows on your Mac, and the snow piles up on top of your windows.**
 
