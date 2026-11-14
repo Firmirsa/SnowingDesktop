@@ -35,6 +35,8 @@ static bool pressing;
 static FILE *rec;
 static bool recording;
 static Texture2D wallpaper;
+static int scene;                 // 0 = main demo, 1 = snowmen
+static float duration = DURATION;
 
 static float ease(float a) { a = a < 0 ? 0 : (a > 1 ? 1 : a); return a * a * (3 - 2 * a); }
 static float seg(double t0, double t1) { return ease((float)((t - t0) / (t1 - t0))); }
@@ -50,6 +52,9 @@ ScreenInfo platform_init(void *native_window, AppSettings *s, int argc, char **a
     SetWindowSize(DEMO_W, DEMO_H);
     SetWindowPosition(0, 0);
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--scene") == 0 && i + 1 < argc && strcmp(argv[i + 1], "snowman") == 0) {
+            scene = 1; t = -140.0; duration = 21.0f;
+        }
         if (strcmp(argv[i], "--record") == 0 && i + 1 < argc) {
             char cmd[1024];
             snprintf(cmd, sizeof cmd,
@@ -61,7 +66,7 @@ ScreenInfo platform_init(void *native_window, AppSettings *s, int argc, char **a
             SetTargetFPS(0);
         }
     }
-    if (!recording) t = -8.0; // interactive: short warm-up
+    if (!recording && scene == 0) t = -8.0; // interactive: short warm-up
 
     wins[0] = (FakeWin){101, 110, 215, 470, 330, "Notes", 0, true};
     wins[1] = (FakeWin){102, 650, 340, 520, 300, "Terminal - snow", 1, true};
@@ -87,10 +92,35 @@ ScreenInfo platform_init(void *native_window, AppSettings *s, int argc, char **a
     return (ScreenInfo){DEMO_W, DEMO_H, DEMO_H};
 }
 
+// Snowmen story: piles are full, snowmen build up, one window gets shaken,
+// the cursor knocks another snowman over.
+static void snowman_scene(void) {
+    FakeWin *term = &wins[1], *music = &wins[2];
+    settings->intensity = t < 0 ? 2.6f : 1.0f;
+    settings->snowman_delay = t < 0 ? 1e9f : 0.5f;
+    settings->snowman_speed = 3.0f;
+    float tx = 1150, ty = 700;
+    pressing = false;
+    if (t > 11.0) { tx = lerpf(1150, term->x + 300, seg(11.0, 12.2)); ty = lerpf(700, term->y + 14, seg(11.0, 12.2)); }
+    if (t > 12.4 && t < 15.0) {
+        pressing = true;
+        float u = (float)(t - 12.6);
+        float amp = u > 0 && u < 1.6f ? 120.0f * expf(-u * 0.6f) : 0.0f;
+        term->x = 650 + amp * sinf(u * 2.0f * PI * 2.6f);
+        tx = term->x + 300; ty = term->y + 14;
+    }
+    if (t >= 15.0) { tx = term->x + 300; ty = term->y + 14; }
+    if (t > 15.6) { tx = lerpf(term->x + 300, music->x + 40, seg(15.6, 16.8)); ty = lerpf(term->y + 14, music->y - 22, seg(15.6, 16.8)); }
+    if (t > 17.2) { tx = lerpf(music->x + 40, music->x + 380, seg(17.2, 17.6)); ty = music->y - 22; }
+    if (t > 18.4) { tx = lerpf(music->x + 380, 1150, seg(18.4, 20.0)); ty = lerpf(music->y - 22, 700, seg(18.4, 20.0)); }
+    cur_x = tx; cur_y = ty;
+}
+
 // The scripted story (t = seconds since the recording started).
 void platform_frame(float dt, ScreenInfo *screen) {
     (void)screen;
     t += dt;
+    if (scene == 1) { snowman_scene(); return; }
     settings->intensity = t < 0 ? 2.6f : 1.35f;
 
     FakeWin *notes = &wins[0], *term = &wins[1], *music = &wins[2];
@@ -223,7 +253,7 @@ void platform_after_frame(void) {
     if (img.width != DEMO_W || img.height != DEMO_H) ImageResize(&img, DEMO_W, DEMO_H);
     fwrite(img.data, 4, (size_t)DEMO_W * DEMO_H, rec);
     UnloadImage(img);
-    if (t >= DURATION) settings->quit_req = true;
+    if (t >= duration) settings->quit_req = true;
 }
 
 void platform_shutdown(void) {

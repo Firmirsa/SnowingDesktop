@@ -40,16 +40,30 @@ void render_init(void) {
 
 void render_shutdown(void) { UnloadTexture(flake_tex); }
 
-static float hget(const Surface *sf, int c) {
+static float hraw(const Surface *sf, int c) {
     if (c < 0 || c >= sf->ncols) return 0.0f;
     return sf->h[c];
+}
+
+// drawn height: lightly smoothed so piles look like soft mounds
+static float hget(const Surface *sf, int c) {
+    if (c < 0 || c >= sf->ncols) return 0.0f;
+    return (hraw(sf, c - 2) + 2 * hraw(sf, c - 1) + 3 * hraw(sf, c) + 2 * hraw(sf, c + 1) + hraw(sf, c + 2)) / 9.0f;
+}
+
+// gentle static bumps so full piles don't look like flat slabs
+static float crust(const Surface *sf, float x, float h) {
+    float lx = x - sf->x, seed = (float)(sf->id % 97);
+    float n = sinf(lx * 0.045f + seed) * 1.6f + sinf(lx * 0.11f + seed * 2.3f) * 0.8f + sinf(lx * 0.23f + seed * 5.1f) * 0.35f;
+    float k = fminf(h / 10.0f, 1.0f);
+    return n * k;
 }
 
 static void draw_pile(const Surface *sf, double t) {
     const float W = SNOW_COL_W;
     rlBegin(RL_QUADS);
     for (int c = 0; c < sf->ncols; c++) {
-        float h = sf->h[c];
+        float h = hget(sf, c);
         if (h < 0.25f || !sf->vis[c]) continue;
         float hl = (hget(sf, c - 1) + h) * 0.5f;
         float hr = (hget(sf, c + 1) + h) * 0.5f;
@@ -59,7 +73,8 @@ static void draw_pile(const Surface *sf, double t) {
         float x0 = sf->x + c * W, x1 = x0 + W;
         float bl = sf->y + snow_corner_drop(sf, c) + 1.0f;
         float br = sf->y + snow_corner_drop(sf, c + 1 < sf->ncols ? c + 1 : c) + 1.0f;
-        float tl = bl - 1.0f - hl, tr = br - 1.0f - hr;
+        float tl = bl - 1.0f - fmaxf(0.0f, hl + crust(sf, x0, hl));
+        float tr = br - 1.0f - fmaxf(0.0f, hr + crust(sf, x1, hr));
 
         // body: white on top, cold blue in the shade
         float shade = 1.0f - fminf(h / 30.0f, 1.0f) * 0.25f;
@@ -95,6 +110,75 @@ static void draw_pile(const Surface *sf, double t) {
     }
 }
 
+// ---- snowmen ----------------------------------------------------------------
+static void ball(float x, float y, float r) {
+    if (r < 0.5f) return;
+    DrawCircleV((Vector2){x, y}, r + 0.9f, (Color){140, 160, 200, 170});            // soft outline
+    DrawCircleV((Vector2){x, y}, r, (Color){206, 220, 242, 255});                   // shade
+    DrawCircleV((Vector2){x - r * 0.13f, y - r * 0.15f}, r * 0.84f, (Color){250, 252, 255, 255});
+}
+
+static void tri2(Vector2 a, Vector2 b, Vector2 c, Color col) { // either winding
+    DrawTriangle(a, b, c, col);
+    DrawTriangle(a, c, b, col);
+}
+
+static const Color SCARVES[4] = {{220, 50, 60, 255}, {40, 160, 90, 255}, {60, 110, 230, 255}, {240, 180, 40, 255}};
+
+static void draw_snowman(const Snowman *m) {
+    float r[3], cy[3];
+    snowman_geom(m, r, cy);
+    float x = m->x, b = m->build;
+    Color stick = {105, 68, 40, 255}, coal = {28, 28, 34, 255};
+
+    // arms go behind the body
+    if (b > 0.94f && r[1] > 1.0f) {
+        for (int s = -1; s <= 1; s += 2) {
+            Vector2 a = {x + s * r[1] * 0.7f, cy[1] - r[1] * 0.1f};
+            Vector2 e = {x + s * r[1] * 2.1f, cy[1] - r[1] * 1.0f};
+            DrawLineEx(a, e, 1.8f * m->scale, stick);
+            Vector2 f = {e.x - s * r[1] * 0.35f, e.y - r[1] * 0.45f};
+            DrawLineEx((Vector2){e.x - s * r[1] * 0.3f, e.y + r[1] * 0.1f}, f, 1.3f * m->scale, stick);
+        }
+    }
+    ball(x, cy[0], r[0]);
+    ball(x, cy[1], r[1]);
+    ball(x, cy[2], r[2]);
+
+    float h = r[2];
+    if (b > 0.88f && h > 1.0f) { // eyes
+        DrawCircleV((Vector2){x - h * 0.34f, cy[2] - h * 0.18f}, fmaxf(h * 0.16f, 1.2f), coal);
+        DrawCircleV((Vector2){x + h * 0.34f, cy[2] - h * 0.18f}, fmaxf(h * 0.16f, 1.2f), coal);
+    }
+    if (b > 0.91f && h > 1.0f) { // carrot nose
+        tri2((Vector2){x, cy[2] + h * 0.02f}, (Vector2){x, cy[2] + h * 0.30f},
+             (Vector2){x + m->dir * h * 1.15f, cy[2] + h * 0.20f}, (Color){245, 130, 40, 255});
+    }
+    if (b > 0.93f && r[1] > 1.0f) { // buttons
+        DrawCircleV((Vector2){x, cy[1] - r[1] * 0.25f}, fmaxf(r[1] * 0.11f, 0.8f), coal);
+        DrawCircleV((Vector2){x, cy[1] + r[1] * 0.25f}, fmaxf(r[1] * 0.11f, 0.8f), coal);
+        DrawCircleV((Vector2){x, cy[0] - r[0] * 0.35f}, fmaxf(r[0] * 0.09f, 0.8f), coal);
+    }
+    if (b > 0.97f && h > 1.0f) { // scarf
+        Color sc = SCARVES[m->scarf % 4];
+        DrawRectangleRounded((Rectangle){x - h * 1.0f, cy[2] + h * 0.62f, h * 2.0f, h * 0.48f}, 0.6f, 6, sc);
+        DrawRectangleRounded((Rectangle){x + m->dir * -h * 0.65f - h * 0.22f, cy[2] + h * 0.8f, h * 0.44f, h * 1.15f}, 0.5f, 6, sc);
+    }
+    if (b >= 1.0f && h > 1.0f) { // hat
+        float top = cy[2] - h * 0.78f;
+        if (m->hat == 0) {
+            DrawRectangleRounded((Rectangle){x - h * 1.1f, top - h * 0.12f, h * 2.2f, h * 0.28f}, 0.5f, 6, coal);
+            DrawRectangle((int)(x - h * 0.68f), (int)(top - h * 1.25f), (int)(h * 1.36f), (int)(h * 1.2f), coal);
+            DrawRectangle((int)(x - h * 0.68f), (int)(top - h * 0.38f), (int)(h * 1.36f), (int)fmaxf(h * 0.18f, 1.0f), SCARVES[(m->scarf + 1) % 4]);
+        } else if (m->hat == 1) {
+            Color wool = SCARVES[(m->scarf + 2) % 4];
+            DrawCircleSector((Vector2){x, top + h * 0.15f}, h * 0.95f, 180.0f, 360.0f, 16, wool);
+            DrawRectangleRounded((Rectangle){x - h * 1.0f, top, h * 2.0f, h * 0.32f}, 0.5f, 6, (Color){245, 245, 250, 255});
+            DrawCircleV((Vector2){x, top - h * 0.85f}, h * 0.3f, (Color){250, 250, 255, 255});
+        }
+    }
+}
+
 static void draw_particle(const Particle *p) {
     float s = p->size * 2.6f;
     float a = p->alpha;
@@ -119,6 +203,7 @@ void render_snow(const Snow *s) {
 
     // far + normal flakes behind the piles' crust would look odd; draw piles first
     for (int k = s->nsurf - 1; k >= 0; k--) draw_pile(&s->surf[s->order[k]], s->time);
+    for (int i = 0; i < s->nmen; i++) if (s->men[i].visible) draw_snowman(&s->men[i]);
     for (int i = 0; i < s->np; i++) if (s->p[i].kind != P_NEAR) draw_particle(&s->p[i]);
     for (int i = 0; i < s->np; i++) if (s->p[i].kind == P_NEAR) draw_particle(&s->p[i]);
 

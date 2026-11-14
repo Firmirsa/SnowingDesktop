@@ -12,6 +12,7 @@
 #define SNOW_MAX_SURFACES  64
 #define SNOW_MAX_PARTICLES 7000
 #define SNOW_MAX_GHOSTS    32
+#define SNOW_MAX_SNOWMEN   8
 
 // A desktop window as reported by the platform layer, front-to-back order.
 typedef struct {
@@ -43,9 +44,39 @@ typedef struct {
     float maxh;
     float corner;         // window corner radius (snow hugs rounded corners)
     int z;                // 0 = front-most
+    float full_t;         // how long the pile has been (almost) full
     bool is_ground;
     bool seen;
 } Surface;
+
+// A snowman builds itself on piles that stay full for a while.
+typedef struct {
+    uint32_t surf;        // id of the surface it stands on
+    float offx;           // center, from the surface's left edge
+    float build;          // 0..1: base ball, middle, head, then face/arms/scarf/hat
+    float melt;           // 0..1, 1 = melted away
+    float pop;            // little bounce when it's finished
+    float scale;
+    float missing;        // seconds its window has been gone (other Space...)
+    uint8_t hat;          // 0 top hat, 1 beanie, 2 none
+    uint8_t scarf;        // scarf color index
+    int8_t dir;           // nose direction (-1 / 1)
+    bool visible;
+    float x, y;           // feet position, updated every frame
+} Snowman;
+
+// Ball radii and centers (y grows downward) for a snowman at its build stage.
+static inline float snow_ease01(float t) { t = t < 0 ? 0 : (t > 1 ? 1 : t); return t * t * (3 - 2 * t); }
+static inline void snowman_geom(const Snowman *m, float r[3], float cy[3]) {
+    float k = m->scale * (1.0f - m->melt);
+    if (m->pop > 0.0f) k *= 1.0f + 0.10f * __builtin_sinf(m->pop / 0.5f * 3.14159f);
+    r[0] = 13.0f * k * snow_ease01(m->build / 0.40f);
+    r[1] = 9.5f * k * snow_ease01((m->build - 0.40f) / 0.28f);
+    r[2] = 7.0f * k * snow_ease01((m->build - 0.68f) / 0.20f);
+    cy[0] = m->y - r[0] * 0.85f;
+    cy[1] = cy[0] - r[0] * 0.80f - r[1] * 0.70f;
+    cy[2] = cy[1] - r[1] * 0.80f - r[2] * 0.75f;
+}
 
 typedef struct {
     uint32_t id;
@@ -78,6 +109,12 @@ typedef struct {
 
     float mx, my, mvx, mvy;
     bool mouse_valid;
+
+    Snowman men[SNOW_MAX_SNOWMEN];
+    int nmen;
+    float snowman_delay;  // seconds a pile must stay full before a snowman appears
+    float snowman_speed;  // build speed multiplier
+    float check_t;
 
     uint32_t rng;
 } Snow;

@@ -70,7 +70,7 @@ Clique sur le **❄ dans la barre de menus**. Le menu est en français si ton Ma
 | **Neige** | Chute normale (réglage par défaut) |
 | **Tempête de neige** | Beaucoup de neige, ça s'accumule vite |
 | **Arrêter la neige** | Plus aucun flocon ne tombe, la neige déjà posée reste. Clique à nouveau pour relancer |
-| **Faire fondre la neige** | Toute la neige accumulée fond en quelques secondes |
+| **Faire fondre la neige** | Toute la neige accumulée (et les bonhommes) fond en quelques secondes |
 | **Masquer** | Cache tout (neige qui tombe et neige posée) sans quitter. Clique à nouveau pour réafficher |
 | **Lancer au démarrage** | L'appli démarre toute seule quand tu allumes le Mac (macOS 13 ou plus récent) |
 | **Quitter Snow on Desktop** | Ferme l'appli (`⌘Q` quand le menu est ouvert) |
@@ -91,6 +91,9 @@ Une coche ✓ indique le réglage actif.
 | **Bouger la souris** dans les flocons qui tombent | Le courant d'air les pousse |
 | Mettre une fenêtre par-dessus une autre | La neige cachée derrière reste invisible et réapparaît quand tu découvres la fenêtre |
 | Changer de bureau (Spaces) | La neige t'attend, elle ne tombe pas |
+| Laisser tranquille un moment | Quand un tas reste plein environ 25 s, un **bonhomme de neige ☃️** se construit dessus (un par fenêtre, jusqu'à trois en bas de l'écran) |
+| Secouer ou fermer la fenêtre, ou passer la souris dans un bonhomme | Il se brise |
+| Les tas deviennent très pleins | De petites **avalanches** glissent par les côtés de temps en temps |
 
 La neige **ne bloque jamais tes clics** : tu cliques à travers comme si elle n'existait pas.
 

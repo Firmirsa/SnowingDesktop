@@ -31,6 +31,8 @@ int main(int argc, char **argv) {
 
         if (settings.melt_req) { snow_melt(&snow); settings.melt_req = false; }
         snow.intensity = settings.paused ? 0.0f : settings.intensity;
+        if (settings.snowman_delay > 0.0f) snow.snowman_delay = settings.snowman_delay;
+        if (settings.snowman_speed > 0.0f) snow.snowman_speed = settings.snowman_speed;
 
         int n = platform_windows(wins, SNOW_MAX_SURFACES);
         float mx, my;

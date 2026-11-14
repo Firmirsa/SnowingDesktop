@@ -14,6 +14,8 @@ typedef struct {
     bool  melt_req;    // set by the menu, consumed by main
     bool  quit_req;
     bool  hidden;      // do not draw anything
+    float snowman_delay; // > 0 overrides how long a pile must stay full (demo)
+    float snowman_speed; // > 0 overrides the snowman build speed (demo)
 } AppSettings;
 
 typedef struct {

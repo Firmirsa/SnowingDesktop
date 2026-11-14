@@ -7,7 +7,7 @@
 
 // ---- tuning --------------------------------------------------------------
 #define GRAVITY          1150.0f // chunks of snow (points / s^2)
-#define SLOPE            1.15f   // max height difference between columns
+#define SLOPE            0.85f   // max height difference between columns
 #define EDGE_SLOPE       2.2f    // max height of the outermost column
 #define WIN_MAX_H        30.0f   // max pile height on a window
 #define GROUND_MAX_H     22.0f
@@ -18,6 +18,10 @@
 #define FLAKES_PER_SEC   85.0f   // per 1000 points of screen width at intensity 1
 #define GHOST_TTL        600.0   // seconds a hidden window keeps its snow
 #define CORNER_RADIUS    11.0f
+#define SNOWMAN_BUILD    28.0f   // seconds to build a snowman
+#define SNOWMAN_DELAY    25.0f   // seconds a pile must stay full before one appears
+#define SNOWMAN_MIN_W    220.0f  // narrower windows don't get one
+#define CHECK_EVERY      0.5f
 
 // ---- small helpers -------------------------------------------------------
 static float frand(Snow *s) {
@@ -130,11 +134,171 @@ static void ghost_restore(Snow *s, Surface *sf) {
     }
 }
 
+// ---- snowmen ---------------------------------------------------------------
+static Surface *find_surface(Snow *s, uint32_t id) {
+    for (int i = 0; i < s->nsurf; i++) if (s->surf[i].id == id) return &s->surf[i];
+    return NULL;
+}
+
+static void snowman_remove(Snow *s, int i) { s->men[i] = s->men[--s->nmen]; }
+
+// The snowman falls apart into clumps of snow.
+static void snowman_break(Snow *s, int i, float vx, float vy) {
+    Snowman *m = &s->men[i];
+    float r[3], cy[3];
+    snowman_geom(m, r, cy);
+    for (int b = 0; b < 3; b++) {
+        if (r[b] < 0.5f) continue;
+        int n = 3 + (int)(r[b] * 0.6f);
+        for (int j = 0; j < n; j++) {
+            float a = frange(s, 0, 6.283f), d = frange(s, 0, r[b]);
+            spawn_chunk_from(s, m->x + cosf(a) * d, cy[b] + sinf(a) * d,
+                             vx * frange(s, 0.5f, 1.0f) + cosf(a) * frange(s, 40, 140),
+                             vy * frange(s, 0.5f, 1.0f) - frange(s, 60, 220),
+                             r[b] * r[b] * 0.07f / (float)n + 0.4f, m->surf, 0.3f);
+        }
+    }
+    snowman_remove(s, i);
+}
+
+static void break_snowmen_on(Snow *s, uint32_t surf, float vx, float vy) {
+    for (int i = s->nmen - 1; i >= 0; i--)
+        if (s->men[i].surf == surf) snowman_break(s, i, vx, vy);
+}
+
+static int snowmen_on(Snow *s, uint32_t surf) {
+    int n = 0;
+    for (int i = 0; i < s->nmen; i++) if (s->men[i].surf == surf) n++;
+    return n;
+}
+
+static float pile_at(const Surface *sf, int c) { // average height around a column
+    float sum = 0; int n = 0;
+    for (int k = c - 3; k <= c + 3; k++) if (k >= 0 && k < sf->ncols) { sum += sf->h[k]; n++; }
+    return n ? sum / n : 0.0f;
+}
+
+static void snowman_spawn(Snow *s, Surface *sf) {
+    if (s->nmen >= SNOW_MAX_SNOWMEN) return;
+    float best_x = -1, best_h = -1;
+    for (int tries = 0; tries < 12; tries++) {
+        float x;
+        if (sf->is_ground) {
+            // stay on the sides, away from the Dock
+            float u = frand(s);
+            x = u < 0.5f ? sf->w * (0.06f + u * 0.38f) : sf->w * (0.75f + (u - 0.5f) * 0.38f);
+        } else {
+            x = frange(s, 60.0f, sf->w - 60.0f);
+        }
+        int c = (int)(x / SNOW_COL_W);
+        if (c < 0 || c >= sf->ncols || !sf->vis[c]) continue;
+        bool crowded = false;
+        for (int i = 0; i < s->nmen; i++)
+            if (s->men[i].surf == sf->id && fabsf(s->men[i].offx - x) < 200.0f) crowded = true;
+        if (crowded) continue;
+        float h = pile_at(sf, c);
+        if (h > best_h) { best_h = h; best_x = x; }
+    }
+    if (best_x < 0) return;
+    Snowman *m = &s->men[s->nmen++];
+    memset(m, 0, sizeof *m);
+    m->surf = sf->id;
+    m->offx = best_x;
+    m->scale = sf->is_ground ? frange(s, 1.4f, 1.6f) : frange(s, 1.2f, 1.4f);
+    m->hat = (uint8_t)(frand(s) * 3.0f);
+    m->scarf = (uint8_t)(frand(s) * 4.0f);
+    m->dir = frand(s) < 0.5f ? -1 : 1;
+}
+
+// A full pile sometimes lets go: a slab slides off one side.
+static void avalanche(Snow *s, Surface *sf) {
+    int n = sf->ncols;
+    bool left = frand(s) < 0.5f;
+    int len = (int)(n * frange(s, 0.12f, 0.30f));
+    int c0 = left ? 0 : n - len, c1 = left ? len : n;
+    for (int i = 0; i < s->nmen; i++) { // never under a snowman
+        if (s->men[i].surf != sf->id) continue;
+        int mc = (int)(s->men[i].offx / SNOW_COL_W), pad = 18;
+        if (left && c1 > mc - pad) c1 = mc - pad;
+        if (!left && c0 < mc + pad) c0 = mc + pad;
+    }
+    if (c1 - c0 < 6) return;
+    float f = frange(s, 0.5f, 0.8f), acc = 0;
+    for (int c = c0; c < c1; c++) {
+        // the slab is thicker toward the edge it slides off
+        float edge = left ? 1.0f - (float)(c - c0) / (c1 - c0) : (float)(c - c0) / (c1 - c0);
+        float m = sf->h[c] * f * (0.4f + 0.6f * edge);
+        sf->h[c] -= m; acc += m;
+        if (c % 3 == 2 && acc > 0.2f) {
+            float x = sf->x + (c + 0.5f) * SNOW_COL_W;
+            spawn_chunk_from(s, x, sf->y - sf->h[c] - 2.0f,
+                             (left ? -1.0f : 1.0f) * frange(s, 50, 170) + sf->vx,
+                             -frange(s, 20, 120), acc, sf->id, 0.4f);
+            acc = 0;
+        }
+    }
+}
+
+static void update_snowmen(Snow *s, float dt) {
+    // spawning and avalanches are checked twice a second
+    s->check_t -= dt;
+    if (s->check_t <= 0.0f) {
+        float cdt = CHECK_EVERY - s->check_t;
+        s->check_t = CHECK_EVERY;
+        for (int i = 0; i < s->nsurf; i++) {
+            Surface *sf = &s->surf[i];
+            float sum = 0; int nv = 0;
+            for (int c = 0; c < sf->ncols; c++) if (sf->vis[c]) { sum += sf->h[c]; nv++; }
+            float fill = nv > 20 ? sum / nv / sf->maxh : 0.0f;
+            bool room = sf->is_ground ? snowmen_on(s, sf->id) < 3
+                                      : sf->w >= SNOWMAN_MIN_W && snowmen_on(s, sf->id) == 0;
+            if (fill > 0.6f && room && !s->melting) sf->full_t += cdt;
+            else sf->full_t = fmaxf(0.0f, sf->full_t - cdt);
+            if (sf->full_t >= s->snowman_delay) { snowman_spawn(s, sf); sf->full_t = 0; }
+            if (!sf->is_ground && fill > 0.8f && !s->melting && frand(s) < 0.06f) avalanche(s, sf);
+        }
+    }
+
+    for (int i = s->nmen - 1; i >= 0; i--) {
+        Snowman *m = &s->men[i];
+        Surface *sf = find_surface(s, m->surf);
+        if (!sf) { // window hidden (other Space): wait for it
+            m->visible = false;
+            m->missing += dt;
+            if (m->missing > GHOST_TTL) snowman_remove(s, i);
+            continue;
+        }
+        m->missing = 0;
+        int c = (int)(m->offx / SNOW_COL_W);
+        if (c < 0 || c >= sf->ncols) { snowman_break(s, i, sf->vx, sf->vy); continue; } // window resized
+        m->x = sf->x + m->offx;
+        m->y = sf->y + snow_corner_drop(sf, c) - pile_at(sf, c) + 1.0f;
+        m->visible = sf->vis[c];
+        if (s->melting) {
+            m->melt += dt * 0.5f;
+            if (m->melt >= 1.0f) snowman_remove(s, i);
+            continue;
+        }
+        if (m->build < 1.0f) {
+            m->build += dt * s->snowman_speed / SNOWMAN_BUILD;
+            // it gathers the snow around it
+            float r = 13.0f * m->scale * 1.8f;
+            int c0 = (int)((m->offx - r) / SNOW_COL_W), c1 = (int)((m->offx + r) / SNOW_COL_W);
+            for (int k = c0; k <= c1; k++)
+                if (k >= 0 && k < sf->ncols && sf->h[k] > 3.0f) sf->h[k] -= dt * 0.35f * s->snowman_speed;
+            if (m->build >= 1.0f) { m->build = 1.0f; m->pop = 0.5f; }
+        }
+        if (m->pop > 0.0f) m->pop = fmaxf(0.0f, m->pop - dt);
+    }
+}
+
 // ---- public --------------------------------------------------------------
 void snow_init(Snow *s, float screen_w, float screen_h, float ground_y) {
     memset(s, 0, sizeof *s);
     s->rng = 0x9E3779B9u;
     s->intensity = 1.0f;
+    s->snowman_delay = SNOWMAN_DELAY;
+    s->snowman_speed = 1.0f;
     s->screen_w = screen_w; s->screen_h = screen_h; s->ground_y = ground_y;
 
     Surface *g = &s->surf[s->nsurf++];
@@ -197,6 +361,7 @@ void snow_set_windows(Snow *s, const SnowWindow *wins, int n, float dt) {
             if (fabsf(w->x - sf->x) > 400.0f || fabsf(w->y - sf->y) > 400.0f) { nvx = 0; nvy = 0; }
             float jerk = hypotf(nvx - sf->vx, nvy - sf->vy);
             // going up fast presses snow down; only sudden stops, starts and drops shed it
+            if (jerk > SHAKE_JERK * 1.4f) break_snowmen_on(s, sf->id, sf->vx, sf->vy);
             if (jerk > SHAKE_JERK) {
                 float f = clampf((jerk - SHAKE_JERK) / SHAKE_RANGE, 0.0f, 0.85f);
                 float acc = 0.0f;
@@ -241,8 +406,11 @@ void snow_set_windows(Snow *s, const SnowWindow *wins, int n, float dt) {
     for (int i = 1; i < s->nsurf;) {
         Surface *sf = &s->surf[i];
         if (sf->seen) { i++; continue; }
-        if (mass_hide) ghost_store(s, sf);
-        else spill_columns(s, sf, 0, sf->ncols, sf->vx * 0.3f, -20.0f); // closed: snow falls
+        if (mass_hide) ghost_store(s, sf); // its snowmen wait for it too
+        else {                             // closed: snow and snowmen fall
+            break_snowmen_on(s, sf->id, sf->vx * 0.3f, 0.0f);
+            spill_columns(s, sf, 0, sf->ncols, sf->vx * 0.3f, -20.0f);
+        }
         surface_release(sf);
         s->surf[i] = s->surf[--s->nsurf];
     }
@@ -356,6 +524,17 @@ static void mouse_sweep(Snow *s) {
     float speed = hypotf(s->mvx, s->mvy);
     if (speed < 60.0f) return;
     float power = clampf(speed / 900.0f, 0.15f, 1.0f);
+    if (speed > 300.0f) { // knock snowmen over
+        for (int i = s->nmen - 1; i >= 0; i--) {
+            Snowman *m = &s->men[i];
+            if (!m->visible || m->build < 0.15f) continue;
+            float r[3], cy[3];
+            snowman_geom(m, r, cy);
+            float top = cy[2] - r[2] - (m->build >= 1.0f && m->hat == 0 ? r[2] * 1.2f : 0.0f);
+            if (fabsf(s->mx - m->x) < r[0] + 4.0f && s->my > top && s->my < m->y + 2.0f)
+                snowman_break(s, i, s->mvx * 0.6f, s->mvy * 0.4f);
+        }
+    }
     for (int k = 0; k < s->nsurf; k++) {
         Surface *sf = &s->surf[s->order[k]];
         if (s->mx < sf->x - MOUSE_RADIUS || s->mx > sf->x + sf->w + MOUSE_RADIUS) continue;
@@ -475,7 +654,8 @@ void snow_update(Snow *s, float dt) {
         }
         settle(s, sf, dt);
     }
-    if (s->melting) {
+    update_snowmen(s, dt);
+    if (s->melting && s->nmen == 0) {
         bool any = false;
         for (int i = 0; i < s->nsurf && !any; i++)
             for (int c = 0; c < s->surf[i].ncols; c++) if (s->surf[i].h[c] > 0) { any = true; break; }

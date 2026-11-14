@@ -70,7 +70,7 @@ Click the **❄ in the menu bar**. The menu follows your Mac's language (English
 | **Snow** | Normal snowfall (default) |
 | **Blizzard** | Lots of snow, piles up fast |
 | **Stop snowfall** | No new flakes; snow already on your windows stays. Click again to resume |
-| **Melt all snow** | Every pile melts away in a few seconds |
+| **Melt all snow** | Every pile (and every snowman) melts away in a few seconds |
 | **Hide** | Hides everything without quitting. Click again to show |
 | **Launch at login** | Starts the app when you turn on your Mac (macOS 13+) |
 | **Quit Snow on Desktop** | Closes the app (`⌘Q` while the menu is open) |
@@ -91,6 +91,9 @@ A ✓ shows the active setting.
 | **Move the cursor** through falling flakes | The air pushes them around |
 | Put a window on top of another | Hidden snow stays hidden and comes back when uncovered |
 | Switch desktops (Spaces) | Your snow waits for you, it doesn't fall |
+| Leave it alone for a while | When a pile stays full (~25 s), a **snowman ☃️** builds itself on it (one per window, up to three at the bottom of the screen) |
+| Shake / close the window, or swipe the cursor through a snowman | The snowman falls apart |
+| Piles get very full | Small **avalanches** slide off the sides from time to time |
 
 The snow **never blocks your clicks**: you click right through it.
 
