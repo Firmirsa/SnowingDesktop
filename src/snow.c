@@ -266,7 +266,7 @@ static void update_snowmen(Snow *s, float dt) {
             if (fill > SNOWMAN_FILL && room && !s->melting) sf->full_t += cdt;
             else sf->full_t = fmaxf(0.0f, sf->full_t - cdt);
             if (sf->full_t >= s->snowman_delay) { snowman_spawn(s, sf); sf->full_t = 0; }
-            if (!sf->is_ground && fill > 0.8f && !s->melting && frand(s) < 0.06f) avalanche(s, sf);
+            if (!sf->is_ground && fill > 0.86f && !s->melting && frand(s) < 0.06f) avalanche(s, sf);
         }
     }
 
