@@ -125,58 +125,128 @@ static void tri2(Vector2 a, Vector2 b, Vector2 c, Color col) { // either winding
 
 static const Color SCARVES[4] = {{220, 50, 60, 255}, {40, 160, 90, 255}, {60, 110, 230, 255}, {240, 180, 40, 255}};
 
+// Snow drift in front of the feet, so the snowman sits *in* the pile: a small
+// mound on top, and below the pile surface it covers the buried part of the
+// base ball, following its outline, with the same shading as the pile.
+static void pile_color(float depth, unsigned char *r, unsigned char *g, unsigned char *b) {
+    float k = fminf(fmaxf(depth / 30.0f, 0.0f), 1.0f);
+    *r = (unsigned char)(255 - 70 * k); *g = (unsigned char)(255 - 58 * k); *b = (unsigned char)(255 - 5 * k);
+}
+
+static void draw_skirt(float x, float foot, float bcy, float r0, uint32_t seed) {
+    if (r0 < 1.0f) return;
+    float w = r0 * 1.6f, peak = r0 * 0.42f, rr = r0 + 1.4f;
+    rlBegin(RL_QUADS);
+    for (float dx = -w; dx < w; dx += 1.0f) {
+        float d[2] = {dx, fminf(dx + 1.0f, w)}, top[2], bot[2];
+        for (int i = 0; i < 2; i++) {
+            float k = 1.0f - (d[i] / w) * (d[i] / w);
+            top[i] = foot - peak * powf(fmaxf(k, 0.0f), 0.8f) - sinf(d[i] * 0.35f + seed) * 0.7f * fminf(k * 2.0f, 1.0f);
+            float ball_bottom = fabsf(d[i]) < rr ? bcy + sqrtf(rr * rr - d[i] * d[i]) : foot;
+            bot[i] = fmaxf(ball_bottom, foot + 1.0f);
+        }
+        unsigned char r, g, b;
+        rlColor4ub(253, 254, 255, 255); rlVertex2f(x + d[0], top[0]);
+        pile_color(bot[0] - foot, &r, &g, &b); rlColor4ub(r, g, b, 255); rlVertex2f(x + d[0], bot[0]);
+        pile_color(bot[1] - foot, &r, &g, &b); rlColor4ub(r, g, b, 255); rlVertex2f(x + d[1], bot[1]);
+        rlColor4ub(253, 254, 255, 255); rlVertex2f(x + d[1], top[1]);
+    }
+    rlEnd();
+}
+
 static void draw_snowman(const Snowman *m) {
     float r[3], cy[3];
     snowman_geom(m, r, cy);
-    float x = m->x, b = m->build;
+    float x = m->x, b = m->build, h = r[2];
+    int dir = m->dir;
     Color stick = {105, 68, 40, 255}, coal = {28, 28, 34, 255};
+    Color sc = SCARVES[m->scarf % 4];
+    int arm_ball = m->kind == 1 ? 0 : 1;            // which ball the arms come out of
+    float ar = r[arm_ball], acy = cy[arm_ball];
 
+    // broom (cool snowman), leaning next to him
+    if (m->kind == 2 && b > 0.94f && r[0] > 1.0f) {
+        float bx = x + dir * r[0] * 1.55f, top = m->y - r[0] * 3.3f;
+        Vector2 s0 = {bx + dir * r[0] * 0.25f, top}, s1 = {bx, m->y - 3.0f};
+        DrawLineEx(s0, s1, 2.0f * m->scale, stick);
+        tri2((Vector2){s1.x - r[0] * 0.38f, m->y + 2.0f}, (Vector2){s1.x + r[0] * 0.38f, m->y + 2.0f},
+             (Vector2){s1.x, s1.y - r[0] * 0.55f}, (Color){222, 180, 90, 255});
+        DrawLineEx((Vector2){s1.x - r[0] * 0.2f, s1.y - r[0] * 0.25f}, (Vector2){s1.x + r[0] * 0.2f, s1.y - r[0] * 0.25f},
+                   1.4f * m->scale, (Color){160, 40, 40, 255});
+    }
     // arms go behind the body
-    if (b > 0.94f && r[1] > 1.0f) {
-        for (int s = -1; s <= 1; s += 2) {
-            Vector2 a = {x + s * r[1] * 0.7f, cy[1] - r[1] * 0.1f};
-            Vector2 e = {x + s * r[1] * 2.1f, cy[1] - r[1] * 1.0f};
+    if (b > 0.94f && ar > 1.0f) {
+        for (int sd = -1; sd <= 1; sd += 2) {
+            Vector2 a = {x + sd * ar * 0.7f, acy - ar * 0.15f};
+            Vector2 e = {x + sd * ar * (m->kind == 1 ? 1.75f : 2.1f), acy - ar * (m->kind == 1 ? 0.75f : 1.0f)};
+            if (m->kind == 2 && sd == dir) e = (Vector2){x + dir * r[0] * 1.6f, m->y - r[0] * 2.4f}; // holds the broom
             DrawLineEx(a, e, 1.8f * m->scale, stick);
-            Vector2 f = {e.x - s * r[1] * 0.35f, e.y - r[1] * 0.45f};
-            DrawLineEx((Vector2){e.x - s * r[1] * 0.3f, e.y + r[1] * 0.1f}, f, 1.3f * m->scale, stick);
+            if (m->kind == 1) {
+                DrawCircleV(e, ar * 0.2f, (Color){210, 40, 50, 255});                          // mittens
+            } else if (!(m->kind == 2 && sd == dir)) {
+                Vector2 f = {e.x - sd * ar * 0.35f, e.y - ar * 0.45f};
+                DrawLineEx((Vector2){e.x - sd * ar * 0.3f, e.y + ar * 0.1f}, f, 1.3f * m->scale, stick);
+            }
         }
     }
     ball(x, cy[0], r[0]);
-    ball(x, cy[1], r[1]);
+    if (m->kind != 1) ball(x, cy[1], r[1]);
     ball(x, cy[2], r[2]);
 
-    float h = r[2];
-    if (b > 0.88f && h > 1.0f) { // eyes
-        DrawCircleV((Vector2){x - h * 0.34f, cy[2] - h * 0.18f}, fmaxf(h * 0.16f, 1.2f), coal);
-        DrawCircleV((Vector2){x + h * 0.34f, cy[2] - h * 0.18f}, fmaxf(h * 0.16f, 1.2f), coal);
+    if (b > 0.88f && h > 1.0f) {
+        if (m->kind == 2) { // sunglasses
+            for (int sd = -1; sd <= 1; sd += 2)
+                DrawRectangleRounded((Rectangle){x + sd * h * 0.36f - h * 0.3f, cy[2] - h * 0.38f, h * 0.6f, h * 0.42f}, 0.5f, 6, coal);
+            DrawLineEx((Vector2){x - h * 0.1f, cy[2] - h * 0.26f}, (Vector2){x + h * 0.1f, cy[2] - h * 0.26f}, 1.2f, coal);
+        } else {            // coal eyes
+            DrawCircleV((Vector2){x - h * 0.34f, cy[2] - h * 0.18f}, fmaxf(h * 0.16f, 1.2f), coal);
+            DrawCircleV((Vector2){x + h * 0.34f, cy[2] - h * 0.18f}, fmaxf(h * 0.16f, 1.2f), coal);
+        }
     }
-    if (b > 0.91f && h > 1.0f) { // carrot nose
+    if (b > 0.91f && h > 1.0f) // carrot nose
         tri2((Vector2){x, cy[2] + h * 0.02f}, (Vector2){x, cy[2] + h * 0.30f},
-             (Vector2){x + m->dir * h * 1.15f, cy[2] + h * 0.20f}, (Color){245, 130, 40, 255});
+             (Vector2){x + dir * h * 1.15f, cy[2] + h * 0.20f}, (Color){245, 130, 40, 255});
+    if (m->kind == 1 && b > 0.92f && h > 1.0f) // smile
+        for (int i = 0; i < 5; i++) {
+            float u = (i / 4.0f) * 2.0f - 1.0f;
+            DrawCircleV((Vector2){x + u * h * 0.45f, cy[2] + h * 0.48f - (1.0f - u * u) * -h * 0.12f}, fmaxf(h * 0.07f, 0.8f), coal);
+        }
+    if (b > 0.93f) { // buttons
+        int bb = m->kind == 1 ? 0 : 1;
+        float br = r[bb];
+        if (br > 1.0f) {
+            DrawCircleV((Vector2){x, cy[bb] - br * 0.3f}, fmaxf(br * 0.1f, 0.8f), coal);
+            DrawCircleV((Vector2){x, cy[bb] + br * 0.15f}, fmaxf(br * 0.1f, 0.8f), coal);
+            if (m->kind != 1) DrawCircleV((Vector2){x, cy[0] - r[0] * 0.3f}, fmaxf(r[0] * 0.09f, 0.8f), coal);
+        }
     }
-    if (b > 0.93f && r[1] > 1.0f) { // buttons
-        DrawCircleV((Vector2){x, cy[1] - r[1] * 0.25f}, fmaxf(r[1] * 0.11f, 0.8f), coal);
-        DrawCircleV((Vector2){x, cy[1] + r[1] * 0.25f}, fmaxf(r[1] * 0.11f, 0.8f), coal);
-        DrawCircleV((Vector2){x, cy[0] - r[0] * 0.35f}, fmaxf(r[0] * 0.09f, 0.8f), coal);
-    }
-    if (b > 0.97f && h > 1.0f) { // scarf
-        Color sc = SCARVES[m->scarf % 4];
+    if (m->kind != 1 && b > 0.97f && h > 1.0f) { // scarf
         DrawRectangleRounded((Rectangle){x - h * 1.0f, cy[2] + h * 0.62f, h * 2.0f, h * 0.48f}, 0.6f, 6, sc);
-        DrawRectangleRounded((Rectangle){x + m->dir * -h * 0.65f - h * 0.22f, cy[2] + h * 0.8f, h * 0.44f, h * 1.15f}, 0.5f, 6, sc);
+        DrawRectangleRounded((Rectangle){x - dir * h * 0.65f - h * 0.22f, cy[2] + h * 0.8f, h * 0.44f, h * 1.15f}, 0.5f, 6, sc);
     }
-    if (b >= 1.0f && h > 1.0f) { // hat
-        float top = cy[2] - h * 0.78f;
-        if (m->hat == 0) {
+    if (b >= 1.0f && h > 1.0f) {
+        float top = cy[2] - h * 0.72f;
+        if (m->kind == 1) {        // Santa hat, the tip flops to one side
+            Vector2 tip = {x - dir * h * 0.75f, top - h * 1.3f};
+            tri2((Vector2){x - h * 0.95f, top + h * 0.1f}, (Vector2){x + h * 0.95f, top + h * 0.1f}, tip, (Color){205, 30, 45, 255});
+            DrawRectangleRounded((Rectangle){x - h * 1.08f, top - h * 0.05f, h * 2.16f, h * 0.42f}, 0.6f, 6, (Color){250, 250, 255, 255});
+            DrawCircleV(tip, h * 0.27f, (Color){250, 250, 255, 255});
+        } else if (m->kind == 2) { // earmuffs
+            DrawRing((Vector2){x, cy[2]}, h * 1.0f, h * 1.16f, 195.0f, 345.0f, 20, (Color){60, 60, 70, 255});
+            DrawCircleV((Vector2){x - h * 1.02f, cy[2] - h * 0.05f}, h * 0.36f, SCARVES[(m->scarf + 1) % 4]);
+            DrawCircleV((Vector2){x + h * 1.02f, cy[2] - h * 0.05f}, h * 0.36f, SCARVES[(m->scarf + 1) % 4]);
+        } else if (m->hat == 0) {  // top hat
             DrawRectangleRounded((Rectangle){x - h * 1.1f, top - h * 0.12f, h * 2.2f, h * 0.28f}, 0.5f, 6, coal);
             DrawRectangle((int)(x - h * 0.68f), (int)(top - h * 1.25f), (int)(h * 1.36f), (int)(h * 1.2f), coal);
             DrawRectangle((int)(x - h * 0.68f), (int)(top - h * 0.38f), (int)(h * 1.36f), (int)fmaxf(h * 0.18f, 1.0f), SCARVES[(m->scarf + 1) % 4]);
-        } else if (m->hat == 1) {
+        } else if (m->hat == 1) {  // beanie
             Color wool = SCARVES[(m->scarf + 2) % 4];
             DrawCircleSector((Vector2){x, top + h * 0.15f}, h * 0.95f, 180.0f, 360.0f, 16, wool);
             DrawRectangleRounded((Rectangle){x - h * 1.0f, top, h * 2.0f, h * 0.32f}, 0.5f, 6, (Color){245, 245, 250, 255});
             DrawCircleV((Vector2){x, top - h * 0.85f}, h * 0.3f, (Color){250, 250, 255, 255});
         }
     }
+    draw_skirt(x, m->y, cy[0], r[0], m->surf * 7u + (uint32_t)m->offx);
 }
 
 static void draw_particle(const Particle *p) {

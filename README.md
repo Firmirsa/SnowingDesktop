@@ -25,7 +25,7 @@ Close it and the snow falls onto whatever is underneath. Brush the snow away wit
 - **Physics**: move a window and its snow comes along; stop it suddenly or shake it and the snow keeps going (inertia)
 - **Closing a window** drops its snow, which crumbles in the air and lands on the windows below
 - **Cursor interaction**: sweep piles off with your mouse, and push falling flakes around
-- **Snowmen** ☃️: when a pile stays full for a while, a snowman builds itself on it, ball by ball, then gets eyes, a carrot nose, arms, a scarf and a hat. Shake the window, close it or swipe through it with the cursor and it falls apart
+- **Snowmen** ☃️: when a lot of snow has piled up, a snowman slowly builds itself on it, ball by ball, then gets its face, arms and outfit. Three models: classic, Santa 🎅 and cool 😎 (sunglasses, earmuffs, broom). Shake the window, close it or swipe through it with the cursor and it falls apart
 - **Avalanches**: full piles let go of a slab now and then, so your windows never turn into flat blocks of snow
 - **Depth**: tiny far-away flakes, regular flakes, and big blurry flakes close to the "camera"
 - **Window stacking aware**: snow behind another window stays hidden, and comes back when you uncover it

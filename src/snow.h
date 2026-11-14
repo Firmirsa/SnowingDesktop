@@ -58,7 +58,8 @@ typedef struct {
     float pop;            // little bounce when it's finished
     float scale;
     float missing;        // seconds its window has been gone (other Space...)
-    uint8_t hat;          // 0 top hat, 1 beanie, 2 none
+    uint8_t kind;         // 0 classic, 1 Santa (two balls), 2 cool (sunglasses, earmuffs, broom)
+    uint8_t hat;          // classic only: 0 top hat, 1 beanie, 2 none
     uint8_t scarf;        // scarf color index
     int8_t dir;           // nose direction (-1 / 1)
     bool visible;
@@ -70,10 +71,19 @@ static inline float snow_ease01(float t) { t = t < 0 ? 0 : (t > 1 ? 1 : t); retu
 static inline void snowman_geom(const Snowman *m, float r[3], float cy[3]) {
     float k = m->scale * (1.0f - m->melt);
     if (m->pop > 0.0f) k *= 1.0f + 0.10f * __builtin_sinf(m->pop / 0.5f * 3.14159f);
+    if (m->kind == 1) { // chubby: big base + head, no middle ball
+        r[0] = 15.5f * k * snow_ease01(m->build / 0.50f);
+        r[1] = 0.0f;
+        r[2] = 10.5f * k * snow_ease01((m->build - 0.50f) / 0.32f);
+        cy[0] = m->y - r[0] * 0.58f;            // partly buried in the snow
+        cy[1] = cy[0];
+        cy[2] = cy[0] - r[0] * 0.82f - r[2] * 0.78f;
+        return;
+    }
     r[0] = 13.0f * k * snow_ease01(m->build / 0.40f);
     r[1] = 9.5f * k * snow_ease01((m->build - 0.40f) / 0.28f);
     r[2] = 7.0f * k * snow_ease01((m->build - 0.68f) / 0.20f);
-    cy[0] = m->y - r[0] * 0.85f;
+    cy[0] = m->y - r[0] * 0.58f;                // partly buried in the snow
     cy[1] = cy[0] - r[0] * 0.80f - r[1] * 0.70f;
     cy[2] = cy[1] - r[1] * 0.80f - r[2] * 0.75f;
 }

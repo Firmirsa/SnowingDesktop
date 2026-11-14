@@ -91,7 +91,7 @@ Une coche ✓ indique le réglage actif.
 | **Bouger la souris** dans les flocons qui tombent | Le courant d'air les pousse |
 | Mettre une fenêtre par-dessus une autre | La neige cachée derrière reste invisible et réapparaît quand tu découvres la fenêtre |
 | Changer de bureau (Spaces) | La neige t'attend, elle ne tombe pas |
-| Laisser tranquille un moment | Quand un tas reste plein environ 25 s, un **bonhomme de neige ☃️** se construit dessus (un par fenêtre, jusqu'à trois en bas de l'écran) |
+| Laisser tranquille un moment | Quand beaucoup de neige s'est accumulée et reste là (environ 1 min 30), un **bonhomme de neige ☃️** s'y construit en une minute : classique, Père Noël 🎅 ou cool 😎 (un par fenêtre, jusqu'à trois en bas de l'écran) |
 | Secouer ou fermer la fenêtre, ou passer la souris dans un bonhomme | Il se brise |
 | Les tas deviennent très pleins | De petites **avalanches** glissent par les côtés de temps en temps |
 

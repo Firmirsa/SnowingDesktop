@@ -18,8 +18,9 @@
 #define FLAKES_PER_SEC   85.0f   // per 1000 points of screen width at intensity 1
 #define GHOST_TTL        600.0   // seconds a hidden window keeps its snow
 #define CORNER_RADIUS    11.0f
-#define SNOWMAN_BUILD    28.0f   // seconds to build a snowman
-#define SNOWMAN_DELAY    25.0f   // seconds a pile must stay full before one appears
+#define SNOWMAN_BUILD    60.0f   // seconds to build a snowman
+#define SNOWMAN_DELAY    90.0f   // seconds a pile must stay full before one appears
+#define SNOWMAN_FILL     0.75f   // how full (fraction of max height) the pile must be
 #define SNOWMAN_MIN_W    220.0f  // narrower windows don't get one
 #define CHECK_EVERY      0.5f
 
@@ -205,6 +206,16 @@ static void snowman_spawn(Snow *s, Surface *sf) {
     m->surf = sf->id;
     m->offx = best_x;
     m->scale = sf->is_ground ? frange(s, 1.4f, 1.6f) : frange(s, 1.2f, 1.4f);
+    // vary the models on screen: prefer one that isn't there yet
+    int used[3] = {0, 0, 0};
+    for (int i = 0; i < s->nmen - 1; i++) used[s->men[i].kind % 3]++;
+    float u = frand(s);
+    int kind = u < 0.45f ? 0 : (u < 0.72f ? 1 : 2);
+    if (used[kind]) {
+        int start = (int)(frand(s) * 3.0f);
+        for (int j = 0; j < 3; j++) if (!used[(start + j) % 3]) { kind = (start + j) % 3; break; }
+    }
+    m->kind = (uint8_t)kind;
     m->hat = (uint8_t)(frand(s) * 3.0f);
     m->scarf = (uint8_t)(frand(s) * 4.0f);
     m->dir = frand(s) < 0.5f ? -1 : 1;
@@ -252,7 +263,7 @@ static void update_snowmen(Snow *s, float dt) {
             float fill = nv > 20 ? sum / nv / sf->maxh : 0.0f;
             bool room = sf->is_ground ? snowmen_on(s, sf->id) < 3
                                       : sf->w >= SNOWMAN_MIN_W && snowmen_on(s, sf->id) == 0;
-            if (fill > 0.6f && room && !s->melting) sf->full_t += cdt;
+            if (fill > SNOWMAN_FILL && room && !s->melting) sf->full_t += cdt;
             else sf->full_t = fmaxf(0.0f, sf->full_t - cdt);
             if (sf->full_t >= s->snowman_delay) { snowman_spawn(s, sf); sf->full_t = 0; }
             if (!sf->is_ground && fill > 0.8f && !s->melting && frand(s) < 0.06f) avalanche(s, sf);

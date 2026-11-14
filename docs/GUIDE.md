@@ -91,7 +91,7 @@ A ✓ shows the active setting.
 | **Move the cursor** through falling flakes | The air pushes them around |
 | Put a window on top of another | Hidden snow stays hidden and comes back when uncovered |
 | Switch desktops (Spaces) | Your snow waits for you, it doesn't fall |
-| Leave it alone for a while | When a pile stays full (~25 s), a **snowman ☃️** builds itself on it (one per window, up to three at the bottom of the screen) |
+| Leave it alone for a while | When a lot of snow has piled up and stays there (~1.5 min), a **snowman ☃️** builds itself on it in about a minute: classic, Santa 🎅 or cool 😎 (one per window, up to three at the bottom of the screen) |
 | Shake / close the window, or swipe the cursor through a snowman | The snowman falls apart |
 | Piles get very full | Small **avalanches** slide off the sides from time to time |
 
