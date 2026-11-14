@@ -54,6 +54,7 @@ ScreenInfo platform_init(void *native_window, AppSettings *s, int argc, char **a
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--scene") == 0 && i + 1 < argc && strcmp(argv[i + 1], "snowman") == 0) {
             scene = 1; t = -140.0; duration = 21.0f;
+            zorder[0] = 1; zorder[1] = 2; zorder[2] = 0; // Music in front of Notes: overlapping edges
         }
         if (strcmp(argv[i], "--record") == 0 && i + 1 < argc) {
             char cmd[1024];

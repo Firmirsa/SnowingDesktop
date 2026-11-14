@@ -45,6 +45,7 @@ typedef struct {
     float corner;         // window corner radius (snow hugs rounded corners)
     int z;                // 0 = front-most
     float full_t;         // how long the pile has been (almost) full
+    bool any_hidden;      // part of the top edge is behind another window
     bool is_ground;
     bool seen;
 } Surface;
@@ -64,6 +65,8 @@ typedef struct {
     int8_t dir;           // nose direction (-1 / 1)
     bool visible;
     float x, y;           // feet position, updated every frame
+    float base;           // window edge under the feet: the body never goes below it
+    float minx, maxx;     // visible stretch of pile around it (the drift stays inside)
 } Snowman;
 
 // Ball radii and centers (y grows downward) for a snowman at its build stage.
@@ -76,6 +79,7 @@ static inline void snowman_geom(const Snowman *m, float r[3], float cy[3]) {
         r[1] = 0.0f;
         r[2] = 10.5f * k * snow_ease01((m->build - 0.50f) / 0.32f);
         cy[0] = m->y - r[0] * 0.58f;            // partly buried in the snow
+        if (m->base > 0.0f && cy[0] + r[0] > m->base) cy[0] = m->base - r[0];
         cy[1] = cy[0];
         cy[2] = cy[0] - r[0] * 0.82f - r[2] * 0.78f;
         return;
@@ -84,6 +88,7 @@ static inline void snowman_geom(const Snowman *m, float r[3], float cy[3]) {
     r[1] = 9.5f * k * snow_ease01((m->build - 0.40f) / 0.28f);
     r[2] = 7.0f * k * snow_ease01((m->build - 0.68f) / 0.20f);
     cy[0] = m->y - r[0] * 0.58f;                // partly buried in the snow
+    if (m->base > 0.0f && cy[0] + r[0] > m->base) cy[0] = m->base - r[0]; // thin pile: don't sink into the window
     cy[1] = cy[0] - r[0] * 0.80f - r[1] * 0.70f;
     cy[2] = cy[1] - r[1] * 0.80f - r[2] * 0.75f;
 }

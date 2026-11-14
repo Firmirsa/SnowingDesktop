@@ -283,8 +283,14 @@ static void update_snowmen(Snow *s, float dt) {
         int c = (int)(m->offx / SNOW_COL_W);
         if (c < 0 || c >= sf->ncols) { snowman_break(s, i, sf->vx, sf->vy); continue; } // window resized
         m->x = sf->x + m->offx;
-        m->y = sf->y + snow_corner_drop(sf, c) - pile_at(sf, c) + 1.0f;
+        m->base = sf->y + snow_corner_drop(sf, c);
+        m->y = m->base - pile_at(sf, c) + 1.0f;
         m->visible = sf->vis[c];
+        int lo = c, hi = c; // visible stretch of pile around it
+        while (lo > 0 && c - lo < 60 && sf->vis[lo - 1]) lo--;
+        while (hi < sf->ncols - 1 && hi - c < 60 && sf->vis[hi + 1]) hi++;
+        m->minx = sf->x + lo * SNOW_COL_W;
+        m->maxx = sf->x + (hi + 1) * SNOW_COL_W;
         if (s->melting) {
             m->melt += dt * 0.5f;
             if (m->melt >= 1.0f) snowman_remove(s, i);
@@ -439,6 +445,7 @@ void snow_set_windows(Snow *s, const SnowWindow *wins, int n, float dt) {
     for (int i = 0; i < s->nsurf; i++) {
         Surface *sf = &s->surf[i];
         memset(sf->vis, 1, (size_t)sf->ncols);
+        sf->any_hidden = false;
         float py = sf->y - 1.0f;
         for (int j = 0; j < sf->z && j < s->nocc; j++) {
             const SnowWindow *o = &s->occl[j];
@@ -447,7 +454,7 @@ void snow_set_windows(Snow *s, const SnowWindow *wins, int n, float dt) {
             int c1 = (int)ceilf((o->x + o->w - sf->x) / SNOW_COL_W);
             if (c0 < 0) c0 = 0;
             if (c1 > sf->ncols) c1 = sf->ncols;
-            if (c1 > c0) memset(sf->vis + c0, 0, (size_t)(c1 - c0));
+            if (c1 > c0) { memset(sf->vis + c0, 0, (size_t)(c1 - c0)); sf->any_hidden = true; }
         }
     }
 
@@ -500,6 +507,40 @@ static bool try_land(Snow *s, Particle *p, float oldy) {
     return false;
 }
 
+// Next to a window in front, the pile slopes down like on a window corner
+// instead of ending in a vertical wall; the excess slides off and falls.
+static void taper_hidden(Snow *s, Surface *sf) {
+    if (!sf->any_hidden) return;
+    int n = sf->ncols;
+    float *h = sf->h;
+    const uint8_t *v = sf->vis;
+    const int CAP = 64;
+    int dl = CAP;
+    float acc = 0.0f;
+    // distance to the nearest hidden column, left pass then right pass
+    uint16_t *dist = malloc(sizeof(uint16_t) * (size_t)n);
+    if (!dist) return;
+    for (int c = 0; c < n; c++) { dl = v[c] ? (dl < CAP ? dl + 1 : CAP) : 0; dist[c] = (uint16_t)dl; }
+    int dr = CAP;
+    for (int c = n - 1; c >= 0; c--) {
+        dr = v[c] ? (dr < CAP ? dr + 1 : CAP) : 0;
+        if (dr < dist[c]) dist[c] = (uint16_t)dr;
+        if (!v[c] || dist[c] >= CAP) continue;
+        float cap = EDGE_SLOPE + SLOPE * (float)(dist[c] - 1);
+        if (h[c] > cap) {
+            float m = (h[c] - cap) * 0.5f;
+            h[c] -= m;
+            acc += m;
+            if (!sf->is_ground && acc > 1.6f) {
+                spawn_chunk_from(s, sf->x + (c + 0.5f) * SNOW_COL_W, sf->y - h[c] - 2.0f,
+                                 sf->vx + frange(s, -25, 25), sf->vy, acc, sf->id, 0.5f);
+                acc = 0.0f;
+            }
+        }
+    }
+    free(dist);
+}
+
 static void settle(Snow *s, Surface *sf, float dt) {
     float *h = sf->h;
     int n = sf->ncols;
@@ -510,6 +551,7 @@ static void settle(Snow *s, Surface *sf, float dt) {
             else if (d < -SLOPE) { float t = (-d - SLOPE) * 0.5f; h[c + 1] -= t; h[c] += t; }
         }
     }
+    taper_hidden(s, sf);
     if (sf->is_ground) {
         for (int c = 0; c < n; c++) if (h[c] > sf->maxh) h[c] = sf->maxh;
         return;

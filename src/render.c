@@ -133,17 +133,19 @@ static void pile_color(float depth, unsigned char *r, unsigned char *g, unsigned
     *r = (unsigned char)(255 - 70 * k); *g = (unsigned char)(255 - 58 * k); *b = (unsigned char)(255 - 5 * k);
 }
 
-static void draw_skirt(float x, float foot, float bcy, float r0, uint32_t seed) {
+static void draw_skirt(float x, float foot, float bcy, float r0, float base, float minx, float maxx, uint32_t seed) {
     if (r0 < 1.0f) return;
     float w = r0 * 1.6f, peak = r0 * 0.42f, rr = r0 + 1.4f;
     rlBegin(RL_QUADS);
-    for (float dx = -w; dx < w; dx += 1.0f) {
-        float d[2] = {dx, fminf(dx + 1.0f, w)}, top[2], bot[2];
+    float lo = fmaxf(-w, minx - x), hi = fminf(w, maxx - x); // stay on the visible pile
+    for (float dx = lo; dx < hi; dx += 1.0f) {
+        float d[2] = {dx, fminf(dx + 1.0f, hi)}, top[2], bot[2];
         for (int i = 0; i < 2; i++) {
             float k = 1.0f - (d[i] / w) * (d[i] / w);
             top[i] = foot - peak * powf(fmaxf(k, 0.0f), 0.8f) - sinf(d[i] * 0.35f + seed) * 0.7f * fminf(k * 2.0f, 1.0f);
             float ball_bottom = fabsf(d[i]) < rr ? bcy + sqrtf(rr * rr - d[i] * d[i]) : foot;
-            bot[i] = fmaxf(ball_bottom, foot + 1.0f);
+            bot[i] = fminf(fmaxf(ball_bottom, foot + 1.0f), base + 1.0f); // never over the window
+            if (top[i] > bot[i]) top[i] = bot[i];
         }
         unsigned char r, g, b;
         rlColor4ub(253, 254, 255, 255); rlVertex2f(x + d[0], top[0]);
@@ -246,7 +248,7 @@ static void draw_snowman(const Snowman *m) {
             DrawCircleV((Vector2){x, top - h * 0.85f}, h * 0.3f, (Color){250, 250, 255, 255});
         }
     }
-    draw_skirt(x, m->y, cy[0], r[0], m->surf * 7u + (uint32_t)m->offx);
+    draw_skirt(x, m->y, cy[0], r[0], m->base, m->minx, m->maxx, m->surf * 7u + (uint32_t)m->offx);
 }
 
 static void draw_particle(const Particle *p) {
