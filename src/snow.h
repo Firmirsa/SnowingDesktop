@@ -66,6 +66,7 @@ typedef struct {
     bool visible;
     float x, y;           // feet position, updated every frame
     float base;           // window edge under the feet: the body never goes below it
+    float hg;             // pile height around it (measured outside its own mound)
     float minx, maxx;     // visible stretch of pile around it (the drift stays inside)
 } Snowman;
 

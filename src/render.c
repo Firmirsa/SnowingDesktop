@@ -125,37 +125,6 @@ static void tri2(Vector2 a, Vector2 b, Vector2 c, Color col) { // either winding
 
 static const Color SCARVES[4] = {{220, 50, 60, 255}, {40, 160, 90, 255}, {60, 110, 230, 255}, {240, 180, 40, 255}};
 
-// Snow drift in front of the feet, so the snowman sits *in* the pile: a small
-// mound on top, and below the pile surface it covers the buried part of the
-// base ball, following its outline, with the same shading as the pile.
-static void pile_color(float depth, unsigned char *r, unsigned char *g, unsigned char *b) {
-    float k = fminf(fmaxf(depth / 30.0f, 0.0f), 1.0f);
-    *r = (unsigned char)(255 - 70 * k); *g = (unsigned char)(255 - 58 * k); *b = (unsigned char)(255 - 5 * k);
-}
-
-static void draw_skirt(float x, float foot, float bcy, float r0, float base, float minx, float maxx, uint32_t seed) {
-    if (r0 < 1.0f) return;
-    float w = r0 * 1.6f, peak = r0 * 0.42f, rr = r0 + 1.4f;
-    rlBegin(RL_QUADS);
-    float lo = fmaxf(-w, minx - x), hi = fminf(w, maxx - x); // stay on the visible pile
-    for (float dx = lo; dx < hi; dx += 1.0f) {
-        float d[2] = {dx, fminf(dx + 1.0f, hi)}, top[2], bot[2];
-        for (int i = 0; i < 2; i++) {
-            float k = 1.0f - (d[i] / w) * (d[i] / w);
-            top[i] = foot - peak * powf(fmaxf(k, 0.0f), 0.8f) - sinf(d[i] * 0.35f + seed) * 0.7f * fminf(k * 2.0f, 1.0f);
-            float ball_bottom = fabsf(d[i]) < rr ? bcy + sqrtf(rr * rr - d[i] * d[i]) : foot;
-            bot[i] = fminf(fmaxf(ball_bottom, foot + 1.0f), base + 1.0f); // never over the window
-            if (top[i] > bot[i]) top[i] = bot[i];
-        }
-        unsigned char r, g, b;
-        rlColor4ub(253, 254, 255, 255); rlVertex2f(x + d[0], top[0]);
-        pile_color(bot[0] - foot, &r, &g, &b); rlColor4ub(r, g, b, 255); rlVertex2f(x + d[0], bot[0]);
-        pile_color(bot[1] - foot, &r, &g, &b); rlColor4ub(r, g, b, 255); rlVertex2f(x + d[1], bot[1]);
-        rlColor4ub(253, 254, 255, 255); rlVertex2f(x + d[1], top[1]);
-    }
-    rlEnd();
-}
-
 static void draw_snowman(const Snowman *m) {
     float r[3], cy[3];
     snowman_geom(m, r, cy);
@@ -248,7 +217,6 @@ static void draw_snowman(const Snowman *m) {
             DrawCircleV((Vector2){x, top - h * 0.85f}, h * 0.3f, (Color){250, 250, 255, 255});
         }
     }
-    draw_skirt(x, m->y, cy[0], r[0], m->base, m->minx, m->maxx, m->surf * 7u + (uint32_t)m->offx);
 }
 
 static void draw_particle(const Particle *p) {
@@ -274,8 +242,14 @@ void render_snow(const Snow *s) {
     BeginBlendMode(BLEND_CUSTOM_SEPARATE);
 
     // far + normal flakes behind the piles' crust would look odd; draw piles first
-    for (int k = s->nsurf - 1; k >= 0; k--) draw_pile(&s->surf[s->order[k]], s->time);
-    for (int i = 0; i < s->nmen; i++) if (s->men[i].visible) draw_snowman(&s->men[i]);
+    // back to front; a surface's snowmen are drawn *before* its pile so the
+    // snow covers their buried base
+    for (int k = s->nsurf - 1; k >= 0; k--) {
+        const Surface *sf = &s->surf[s->order[k]];
+        for (int i = 0; i < s->nmen; i++)
+            if (s->men[i].visible && s->men[i].surf == sf->id) draw_snowman(&s->men[i]);
+        draw_pile(sf, s->time);
+    }
     for (int i = 0; i < s->np; i++) if (s->p[i].kind != P_NEAR) draw_particle(&s->p[i]);
     for (int i = 0; i < s->np; i++) if (s->p[i].kind == P_NEAR) draw_particle(&s->p[i]);
 

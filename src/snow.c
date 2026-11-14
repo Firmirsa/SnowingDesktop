@@ -20,7 +20,9 @@
 #define CORNER_RADIUS    11.0f
 #define SNOWMAN_BUILD    60.0f   // seconds to build a snowman
 #define SNOWMAN_DELAY    90.0f   // seconds a pile must stay full before one appears
+#ifndef SNOWMAN_FILL
 #define SNOWMAN_FILL     0.75f   // how full (fraction of max height) the pile must be
+#endif
 #define SNOWMAN_MIN_W    220.0f  // narrower windows don't get one
 #define CHECK_EVERY      0.5f
 
@@ -219,6 +221,7 @@ static void snowman_spawn(Snow *s, Surface *sf) {
     m->hat = (uint8_t)(frand(s) * 3.0f);
     m->scarf = (uint8_t)(frand(s) * 4.0f);
     m->dir = frand(s) < 0.5f ? -1 : 1;
+    m->hg = pile_at(sf, (int)(best_x / SNOW_COL_W));
 }
 
 // A full pile sometimes lets go: a slab slides off one side.
@@ -284,7 +287,30 @@ static void update_snowmen(Snow *s, float dt) {
         if (c < 0 || c >= sf->ncols) { snowman_break(s, i, sf->vx, sf->vy); continue; } // window resized
         m->x = sf->x + m->offx;
         m->base = sf->y + snow_corner_drop(sf, c);
-        m->y = m->base - pile_at(sf, c) + 1.0f;
+        // it packs snow around its feet: a real mound in the pile, measured
+        // and drawn like any other snow
+        float r0 = (m->kind == 1 ? 15.5f : 13.0f) * m->scale;
+        float grow = snow_ease01(m->build / 0.40f) * (1.0f - m->melt);
+        float w = r0 * 1.7f;
+        int cl = (int)((m->offx - w - 6.0f) / SNOW_COL_W), cr = (int)((m->offx + w + 6.0f) / SNOW_COL_W);
+        float hs = 0.0f; int ns = 0;
+        if (cl >= 0) { hs += pile_at(sf, cl); ns++; }
+        if (cr < sf->ncols) { hs += pile_at(sf, cr); ns++; }
+        if (ns) m->hg += (hs / ns - m->hg) * clampf(dt * 0.5f, 0.0f, 1.0f);
+        m->y = m->base - m->hg + 1.0f;
+        if (!s->melting && grow > 0.0f) {
+            float peak = r0 * 0.38f * grow;
+            int k0 = (int)((m->offx - w) / SNOW_COL_W), k1 = (int)((m->offx + w) / SNOW_COL_W);
+            for (int k = k0 > 0 ? k0 : 0; k <= k1 && k < sf->ncols; k++) {
+                float dx = (k + 0.5f) * SNOW_COL_W - m->offx;
+                float q = 1.0f - (dx / w) * (dx / w);
+                if (q <= 0.0f) continue;
+                float tgt = m->hg + peak * powf(q, 0.8f);
+                int edge = k < sf->ncols - 1 - k ? k : sf->ncols - 1 - k; // stay under the corner slope
+                tgt = fminf(tgt, EDGE_SLOPE + SLOPE * (float)edge);
+                if (sf->h[k] < tgt) sf->h[k] += (tgt - sf->h[k]) * clampf(dt * 3.0f, 0.0f, 1.0f);
+            }
+        }
         m->visible = sf->vis[c];
         int lo = c, hi = c; // visible stretch of pile around it
         while (lo > 0 && c - lo < 60 && sf->vis[lo - 1]) lo--;
@@ -298,11 +324,6 @@ static void update_snowmen(Snow *s, float dt) {
         }
         if (m->build < 1.0f) {
             m->build += dt * s->snowman_speed / SNOWMAN_BUILD;
-            // it gathers the snow around it
-            float r = 13.0f * m->scale * 1.8f;
-            int c0 = (int)((m->offx - r) / SNOW_COL_W), c1 = (int)((m->offx + r) / SNOW_COL_W);
-            for (int k = c0; k <= c1; k++)
-                if (k >= 0 && k < sf->ncols && sf->h[k] > 3.0f) sf->h[k] -= dt * 0.35f * s->snowman_speed;
             if (m->build >= 1.0f) { m->build = 1.0f; m->pop = 0.5f; }
         }
         if (m->pop > 0.0f) m->pop = fmaxf(0.0f, m->pop - dt);

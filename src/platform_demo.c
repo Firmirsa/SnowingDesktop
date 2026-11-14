@@ -99,7 +99,7 @@ static void snowman_scene(void) {
     FakeWin *term = &wins[1], *music = &wins[2];
     settings->intensity = t < 0 ? 2.6f : 1.0f;
     settings->snowman_delay = t < 0 ? 1e9f : 0.5f;
-    settings->snowman_speed = 3.0f;
+    settings->snowman_speed = 6.0f;
     float tx = 1150, ty = 700;
     pressing = false;
     if (t > 11.0) { tx = lerpf(1150, term->x + 300, seg(11.0, 12.2)); ty = lerpf(700, term->y + 14, seg(11.0, 12.2)); }
